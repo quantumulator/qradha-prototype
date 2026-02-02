@@ -9,7 +9,10 @@ import {
   MessageSquare,
   AlertTriangle,
   Settings,
-  Bell
+  Bell,
+  Waves,
+  Cloud,
+  Wind
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -31,16 +34,27 @@ export default function Header() {
 
   const alertCount = portState.alerts.filter(a => a.severity === 'high' || a.severity === 'critical').length;
 
+  // Get current tide status
+  const currentTime = new Date();
+  const nextTide = portState.tides.find(t => new Date(t.timestamp) > currentTime);
+  const tidalWindowOpen = nextTide?.window_open && nextTide?.window_close 
+    ? new Date(nextTide.window_open) <= currentTime && currentTime <= new Date(nextTide.window_close)
+    : false;
+
   return (
     <header className="h-16 glass border-b border-accent-cyan/30 flex items-center justify-between px-6">
       {/* Logo */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-orange flex items-center justify-center">
+        <motion.div 
+          className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-orange flex items-center justify-center"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
           <Ship className="w-6 h-6 text-navy" />
-        </div>
+        </motion.div>
         <div>
           <h1 className="text-xl font-bold gradient-text">QRADHA</h1>
-          <p className="text-xs text-gray-500">Port of Hamburg</p>
+          <p className="text-xs text-gray-500">Quantum-Inspired Port Synchronization</p>
         </div>
       </div>
 
@@ -69,26 +83,66 @@ export default function Header() {
         ))}
       </nav>
 
+      {/* Weather & Tide Status */}
+      <div className="hidden lg:flex items-center gap-4 text-xs">
+        {/* Tidal Window */}
+        <motion.div 
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+            tidalWindowOpen ? 'bg-green-500/20 text-green-400' : 'bg-navy-400 text-gray-400'
+          }`}
+          animate={{ scale: tidalWindowOpen ? [1, 1.02, 1] : 1 }}
+          transition={{ repeat: tidalWindowOpen ? Infinity : 0, duration: 2 }}
+        >
+          <Waves className="w-4 h-4" />
+          <span className="font-medium">
+            {tidalWindowOpen ? 'Tidal Window: Open' : 'Tidal Window: Closed'}
+          </span>
+          {nextTide && (
+            <span className="text-gray-500">
+              (Next: {nextTide.type} {new Date(nextTide.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})
+            </span>
+          )}
+        </motion.div>
+
+        {/* Weather */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-navy-400 text-gray-400">
+          <Wind className="w-4 h-4" />
+          <span>{portState.weather.wind_speed_kmh} km/h</span>
+          <Cloud className="w-4 h-4 ml-2" />
+          <span>{portState.weather.visibility_km} km vis</span>
+        </div>
+      </div>
+
       {/* Actions */}
       <div className="flex items-center gap-2">
         {/* Disruption Button */}
-        <button
+        <motion.button
           onClick={() => setIsDisruptionPanelOpen(true)}
           className="px-4 py-2 bg-accent-orange text-navy font-semibold rounded-lg hover:bg-accent-orange/80 transition-colors flex items-center gap-2"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
         >
           <AlertTriangle className="w-4 h-4" />
           <span>Report Disruption</span>
-        </button>
+        </motion.button>
 
         {/* Alerts */}
-        <button className="relative p-2 rounded-lg hover:bg-navy-300 transition-colors">
+        <motion.button 
+          className="relative p-2 rounded-lg hover:bg-navy-300 transition-colors"
+          animate={alertCount > 0 ? { scale: [1, 1.1, 1] } : {}}
+          transition={{ repeat: alertCount > 0 ? Infinity : 0, duration: 2 }}
+        >
           <Bell className="w-5 h-5 text-gray-400" />
           {alertCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-accent-red text-white text-xs rounded-full flex items-center justify-center">
+            <motion.span 
+              className="absolute -top-1 -right-1 w-5 h-5 bg-accent-red text-white text-xs rounded-full flex items-center justify-center"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+            >
               {alertCount}
-            </span>
+            </motion.span>
           )}
-        </button>
+        </motion.button>
 
         {/* Chat Toggle */}
         <button

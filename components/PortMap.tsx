@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useQradhaStore } from '@/lib/store';
-import type { Vessel, Berth, Crane, Train } from '@/lib/types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { AlertTriangle, Play, Ship, Train, Anchor, Cog } from 'lucide-react';
+import type { Vessel, Berth, Crane, Train as TrainType } from '@/lib/types';
 
 // Hamburg Port coordinates
 const HAMBURG_CENTER: [number, number] = [9.9537, 53.5311];
@@ -24,19 +26,45 @@ export default function PortMap() {
     trains: true,
   });
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
+  const [isSimulatingDisruption, setIsSimulatingDisruption] = useState(false);
+  const [disruptionCascade, setDisruptionCascade] = useState<string[]>([]);
   
   const { 
     portState, 
     setSelectedVessel, 
     setSelectedBerth, 
     selectedVessel,
-    selectedBerth 
+    selectedBerth,
+    currentDisruption 
   } = useQradhaStore();
 
   // Toggle layer visibility
   const toggleLayer = useCallback((layer: LayerType) => {
     setVisibleLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   }, []);
+
+  // Simulate disruption cascade
+  const simulateDisruptionCascade = useCallback(() => {
+    setIsSimulatingDisruption(true);
+    setDisruptionCascade([]);
+    
+    // Cascade through entities with delays
+    const affectedEntities = [
+      ...portState.vessels.slice(0, 3).map(v => v.id),
+      ...portState.berths.slice(0, 2).map(b => b.id),
+      ...portState.trains.slice(0, 2).map(t => t.id),
+    ];
+    
+    affectedEntities.forEach((id, index) => {
+      setTimeout(() => {
+        setDisruptionCascade(prev => [...prev, id]);
+      }, index * 500);
+    });
+    
+    setTimeout(() => {
+      setIsSimulatingDisruption(false);
+    }, affectedEntities.length * 500 + 2000);
+  }, [portState]);
 
   // Initialize map
   useEffect(() => {
@@ -69,6 +97,7 @@ export default function PortMap() {
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.current.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+    map.current.addControl(new maplibregl.FullscreenControl(), 'top-right');
 
     map.current.on('load', () => {
       setMapLoaded(true);
@@ -88,10 +117,11 @@ export default function PortMap() {
     markersRef.current = {};
   }, []);
 
-  // Create vessel marker element
+  // Create vessel marker element - LARGER and MORE VISIBLE
   const createVesselMarker = useCallback((vessel: Vessel) => {
     const isSelected = selectedVessel?.id === vessel.id;
     const isHovered = hoveredEntity === vessel.id;
+    const isAffected = disruptionCascade.includes(vessel.id);
     
     const el = document.createElement('div');
     el.className = 'vessel-marker';
@@ -101,36 +131,43 @@ export default function PortMap() {
         cursor: pointer;
         transform: rotate(${vessel.heading || 0}deg);
         transition: transform 0.3s ease;
+        animation: ${isAffected ? 'pulse-red 0.5s ease-in-out' : 'none'};
       ">
-        <svg width="40" height="40" viewBox="0 0 40 40" style="
-          filter: drop-shadow(0 0 ${isSelected ? '12px' : '6px'} ${getVesselColor(vessel)});
+        <svg width="60" height="60" viewBox="0 0 60 60" style="
+          filter: drop-shadow(0 0 ${isSelected ? '16px' : isAffected ? '12px' : '8px'} ${isAffected ? '#FF2E63' : getVesselColor(vessel)});
           transition: all 0.3s ease;
-          transform: scale(${isSelected || isHovered ? 1.2 : 1});
+          transform: scale(${isSelected || isHovered ? 1.3 : 1});
         ">
-          <!-- Ship hull -->
-          <path d="M20 5 L35 30 L32 35 L8 35 L5 30 Z" 
-            fill="${getVesselColor(vessel)}" 
+          <!-- Ship hull - LARGER -->
+          <path d="M30 5 L52 40 L48 50 L12 50 L8 40 Z" 
+            fill="${isAffected ? '#FF2E63' : getVesselColor(vessel)}" 
             stroke="white" 
-            stroke-width="2"
+            stroke-width="2.5"
           />
           <!-- Bridge -->
-          <rect x="15" y="18" width="10" height="8" rx="1" fill="#0A1929" stroke="white" stroke-width="1"/>
+          <rect x="22" y="25" width="16" height="12" rx="2" fill="#0A1929" stroke="white" stroke-width="1.5"/>
           <!-- Containers (if cargo ship) -->
-          <rect x="12" y="26" width="16" height="5" rx="1" fill="${getVesselColor(vessel)}" stroke="white" stroke-width="0.5"/>
+          <rect x="18" y="37" width="24" height="8" rx="1" fill="${isAffected ? '#FF2E63' : getVesselColor(vessel)}" stroke="white" stroke-width="0.5"/>
+          <!-- Navigation light -->
+          <circle cx="30" cy="15" r="3" fill="${vessel.status === 'approaching' ? '#00FF88' : '#FFD93D'}">
+            <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
         </svg>
         <div style="
           position: absolute;
-          bottom: -20px;
+          bottom: -25px;
           left: 50%;
           transform: translateX(-50%);
-          background: rgba(10, 25, 41, 0.9);
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-size: 10px;
+          background: ${isAffected ? 'rgba(255, 46, 99, 0.95)' : 'rgba(10, 25, 41, 0.95)'};
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
           color: white;
           white-space: nowrap;
           font-family: 'IBM Plex Sans', sans-serif;
-          border: 1px solid ${getVesselColor(vessel)};
+          border: 2px solid ${isAffected ? '#FF2E63' : getVesselColor(vessel)};
+          box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         ">${vessel.name}</div>
       </div>
     `;
@@ -140,42 +177,54 @@ export default function PortMap() {
     el.onclick = () => setSelectedVessel(vessel);
     
     return el;
-  }, [selectedVessel, hoveredEntity, setSelectedVessel]);
+  }, [selectedVessel, hoveredEntity, setSelectedVessel, disruptionCascade]);
 
   // Create berth marker element
   const createBerthMarker = useCallback((berth: Berth) => {
     const isSelected = selectedBerth?.id === berth.id;
     const isHovered = hoveredEntity === berth.id;
+    const isAffected = disruptionCascade.includes(berth.id);
     
     const el = document.createElement('div');
     el.innerHTML = `
       <div style="
         cursor: pointer;
         transition: all 0.3s ease;
-        transform: scale(${isSelected || isHovered ? 1.1 : 1});
+        transform: scale(${isSelected || isHovered ? 1.15 : 1});
+        animation: ${isAffected ? 'pulse-red 0.5s ease-in-out' : berth.status === 'occupied' ? 'pulse-berth 2s ease-in-out infinite' : 'none'};
       ">
-        <svg width="50" height="20" viewBox="0 0 50 20" style="
-          filter: drop-shadow(0 0 ${isSelected ? '8px' : '4px'} ${getBerthColor(berth)});
+        <svg width="60" height="28" viewBox="0 0 60 28" style="
+          filter: drop-shadow(0 0 ${isSelected ? '10px' : '5px'} ${isAffected ? '#FF2E63' : getBerthColor(berth)});
         ">
           <!-- Berth dock -->
-          <rect x="0" y="0" width="50" height="14" rx="2" 
-            fill="${getBerthColor(berth)}" 
+          <rect x="0" y="0" width="60" height="18" rx="3" 
+            fill="${isAffected ? '#FF2E63' : getBerthColor(berth)}" 
             stroke="white" 
-            stroke-width="1.5"
-            opacity="0.9"
+            stroke-width="2"
+            opacity="0.95"
           />
-          <!-- Fenders -->
-          <circle cx="8" cy="7" r="3" fill="#0A1929"/>
-          <circle cx="25" cy="7" r="3" fill="#0A1929"/>
-          <circle cx="42" cy="7" r="3" fill="#0A1929"/>
+          <!-- Fenders with animation -->
+          <circle cx="10" cy="9" r="4" fill="#0A1929" stroke="white" stroke-width="1">
+            ${berth.status === 'occupied' ? '<animate attributeName="r" values="4;5;4" dur="2s" repeatCount="indefinite"/>' : ''}
+          </circle>
+          <circle cx="30" cy="9" r="4" fill="#0A1929" stroke="white" stroke-width="1">
+            ${berth.status === 'occupied' ? '<animate attributeName="r" values="4;5;4" dur="2s" repeatCount="indefinite" begin="0.5s"/>' : ''}
+          </circle>
+          <circle cx="50" cy="9" r="4" fill="#0A1929" stroke="white" stroke-width="1">
+            ${berth.status === 'occupied' ? '<animate attributeName="r" values="4;5;4" dur="2s" repeatCount="indefinite" begin="1s"/>' : ''}
+          </circle>
         </svg>
         <div style="
           text-align: center;
-          font-size: 9px;
+          font-size: 10px;
+          font-weight: 600;
           color: white;
-          margin-top: 2px;
+          margin-top: 3px;
           font-family: 'IBM Plex Sans', sans-serif;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+          text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+          background: rgba(10, 25, 41, 0.8);
+          padding: 2px 6px;
+          border-radius: 4px;
         ">${berth.name.split(' - ')[0]}</div>
       </div>
     `;
@@ -226,41 +275,51 @@ export default function PortMap() {
     return el;
   }, [hoveredEntity]);
 
-  // Create train marker element
-  const createTrainMarker = useCallback((train: Train) => {
+  // Create train marker element - with better positioning
+  const createTrainMarker = useCallback((train: TrainType) => {
     const isHovered = hoveredEntity === train.id;
+    const isAffected = disruptionCascade.includes(train.id);
     
     const el = document.createElement('div');
     el.innerHTML = `
       <div style="
         cursor: pointer;
         transition: all 0.3s ease;
-        transform: scale(${isHovered ? 1.15 : 1});
+        transform: scale(${isHovered ? 1.2 : 1});
+        animation: ${isAffected ? 'pulse-red 0.5s ease-in-out' : train.status === 'loading' ? 'pulse-train 1.5s ease-in-out infinite' : 'none'};
       ">
-        <svg width="48" height="20" viewBox="0 0 48 20" style="
-          filter: drop-shadow(0 0 4px ${getTrainColor(train)});
+        <svg width="56" height="28" viewBox="0 0 56 28" style="
+          filter: drop-shadow(0 0 ${isAffected ? '8px' : '5px'} ${isAffected ? '#FF2E63' : getTrainColor(train)});
         ">
           <!-- Engine -->
-          <rect x="0" y="4" width="16" height="12" rx="2" fill="${getTrainColor(train)}" stroke="white" stroke-width="1"/>
-          <rect x="2" y="6" width="4" height="4" rx="1" fill="#0A1929"/>
+          <rect x="0" y="4" width="20" height="16" rx="3" fill="${isAffected ? '#FF2E63' : getTrainColor(train)}" stroke="white" stroke-width="1.5"/>
+          <rect x="3" y="7" width="6" height="5" rx="1" fill="#0A1929"/>
+          <!-- Headlight -->
+          <circle cx="17" cy="10" r="2" fill="#FFD93D">
+            <animate attributeName="opacity" values="1;0.5;1" dur="1s" repeatCount="indefinite"/>
+          </circle>
           <!-- Cars -->
-          <rect x="18" y="6" width="12" height="10" rx="1" fill="${getTrainColor(train)}" opacity="0.8" stroke="white" stroke-width="0.5"/>
-          <rect x="32" y="6" width="12" height="10" rx="1" fill="${getTrainColor(train)}" opacity="0.6" stroke="white" stroke-width="0.5"/>
+          <rect x="22" y="6" width="14" height="14" rx="2" fill="${isAffected ? '#FF2E63' : getTrainColor(train)}" opacity="0.85" stroke="white" stroke-width="1"/>
+          <rect x="38" y="6" width="14" height="14" rx="2" fill="${isAffected ? '#FF2E63' : getTrainColor(train)}" opacity="0.7" stroke="white" stroke-width="1"/>
           <!-- Wheels -->
-          <circle cx="5" cy="16" r="2" fill="#333"/>
-          <circle cx="11" cy="16" r="2" fill="#333"/>
-          <circle cx="24" cy="16" r="1.5" fill="#333"/>
-          <circle cx="38" cy="16" r="1.5" fill="#333"/>
+          <circle cx="6" cy="22" r="3" fill="#333" stroke="#666" stroke-width="1"/>
+          <circle cx="14" cy="22" r="3" fill="#333" stroke="#666" stroke-width="1"/>
+          <circle cx="29" cy="22" r="2.5" fill="#333" stroke="#666" stroke-width="1"/>
+          <circle cx="45" cy="22" r="2.5" fill="#333" stroke="#666" stroke-width="1"/>
+          <!-- Rail track indication -->
+          <line x1="0" y1="25" x2="56" y2="25" stroke="#666" stroke-width="2"/>
         </svg>
         <div style="
           text-align: center;
-          font-size: 9px;
+          font-size: 10px;
+          font-weight: 600;
           color: white;
-          margin-top: 2px;
+          margin-top: 4px;
           font-family: 'IBM Plex Sans', sans-serif;
-          background: rgba(10, 25, 41, 0.8);
-          padding: 1px 4px;
-          border-radius: 3px;
+          background: ${isAffected ? 'rgba(255, 46, 99, 0.9)' : 'rgba(10, 25, 41, 0.9)'};
+          padding: 3px 8px;
+          border-radius: 4px;
+          border: 1px solid ${isAffected ? '#FF2E63' : getTrainColor(train)};
         ">${train.name}</div>
       </div>
     `;
@@ -269,7 +328,7 @@ export default function PortMap() {
     el.onmouseleave = () => setHoveredEntity(null);
     
     return el;
-  }, [hoveredEntity]);
+  }, [hoveredEntity, disruptionCascade]);
 
   // Update markers when port state or visibility changes
   useEffect(() => {
@@ -382,14 +441,16 @@ export default function PortMap() {
       
       {/* Layer Controls */}
       <div className="absolute top-4 left-4 glass rounded-lg p-3">
-        <div className="font-semibold text-accent-cyan text-sm mb-2">Layers</div>
+        <div className="font-semibold text-accent-cyan text-sm mb-2 flex items-center gap-2">
+          <span>Layers</span>
+        </div>
         <div className="space-y-2">
           {[
-            { key: 'vessels' as LayerType, label: '🚢 Vessels', count: portState.vessels.length },
-            { key: 'berths' as LayerType, label: '⚓ Berths', count: portState.berths.length },
-            { key: 'trains' as LayerType, label: '🚂 Trains', count: portState.trains.length },
-            { key: 'cranes' as LayerType, label: '🏗️ Cranes', count: portState.cranes.length },
-          ].map(({ key, label, count }) => (
+            { key: 'vessels' as LayerType, label: 'Vessels', icon: '🚢', count: portState.vessels.length },
+            { key: 'berths' as LayerType, label: 'Berths', icon: '⚓', count: portState.berths.length },
+            { key: 'trains' as LayerType, label: 'Trains', icon: '🚂', count: portState.trains.length },
+            { key: 'cranes' as LayerType, label: 'Cranes', icon: '🏗️', count: portState.cranes.length },
+          ].map(({ key, label, icon, count }) => (
             <label key={key} className="flex items-center gap-2 cursor-pointer group">
               <input
                 type="checkbox"
@@ -398,13 +459,56 @@ export default function PortMap() {
                 className="w-4 h-4 rounded border-gray-500 text-accent-cyan focus:ring-accent-cyan bg-navy-400"
               />
               <span className="text-sm group-hover:text-white transition-colors">
-                {label}
+                {icon} {label}
               </span>
               <span className="text-xs text-gray-500 ml-auto">({count})</span>
             </label>
           ))}
         </div>
+        
+        {/* Disruption Simulation Button */}
+        <div className="mt-4 pt-3 border-t border-navy-300">
+          <button
+            onClick={simulateDisruptionCascade}
+            disabled={isSimulatingDisruption}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              isSimulatingDisruption 
+                ? 'bg-accent-red/20 text-accent-red cursor-wait' 
+                : 'bg-accent-red/10 text-accent-red hover:bg-accent-red/20'
+            }`}
+          >
+            {isSimulatingDisruption ? (
+              <>
+                <div className="w-4 h-4 border-2 border-accent-red border-t-transparent rounded-full animate-spin" />
+                Simulating...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="w-4 h-4" />
+                Simulate Delay
+              </>
+            )}
+          </button>
+        </div>
       </div>
+      
+      {/* Disruption Alert Banner */}
+      <AnimatePresence>
+        {isSimulatingDisruption && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20"
+          >
+            <div className="glass bg-accent-red/20 border border-accent-red rounded-lg px-6 py-3 flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-accent-red animate-pulse" />
+              <span className="text-accent-red font-medium">⚠️ Disruption Cascade Simulation Active</span>
+              <span className="text-gray-400 text-sm">({disruptionCascade.length} entities affected)</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Map Legend */}
       <div className="absolute bottom-4 right-4 glass rounded-lg p-3 text-sm">
@@ -455,6 +559,25 @@ export default function PortMap() {
         .qradha-popup .maplibregl-popup-tip {
           border-top-color: #00D9FF;
         }
+        
+        @keyframes pulse-red {
+          0%, 100% { filter: drop-shadow(0 0 8px #FF2E63); transform: scale(1); }
+          50% { filter: drop-shadow(0 0 20px #FF2E63); transform: scale(1.1); }
+        }
+        
+        @keyframes pulse-berth {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 1; }
+        }
+        
+        @keyframes pulse-train {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+        
+        .vessel-marker:hover {
+          z-index: 1000 !important;
+        }
       `}</style>
     </div>
   );
@@ -487,7 +610,7 @@ function getCraneColor(crane: Crane): string {
   }
 }
 
-function getTrainColor(train: Train): string {
+function getTrainColor(train: TrainType): string {
   switch (train.status) {
     case 'loading': return '#22c55e';
     case 'waiting': return '#eab308';
@@ -499,16 +622,16 @@ function getTrainColor(train: Train): string {
 
 function createVesselPopup(vessel: Vessel): string {
   return `
-    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 180px;">
+    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 200px;">
       <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div style="width: 8px; height: 8px; border-radius: 50%; background: ${getVesselColor(vessel)}; box-shadow: 0 0 8px ${getVesselColor(vessel)};"></div>
-        <strong style="color: #00D9FF; font-size: 14px;">${vessel.name}</strong>
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: ${getVesselColor(vessel)}; box-shadow: 0 0 10px ${getVesselColor(vessel)};"></div>
+        <strong style="color: #00D9FF; font-size: 15px;">${vessel.name}</strong>
       </div>
       <div style="font-size: 11px; color: #888; margin-bottom: 8px;">IMO: ${vessel.imo}</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px;">
-        <div>Status:</div><div style="color: ${getVesselColor(vessel)}; font-weight: 500;">${vessel.status}</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+        <div>Status:</div><div style="color: ${getVesselColor(vessel)}; font-weight: 600;">${vessel.status}</div>
         <div>ETA:</div><div>${new Date(vessel.eta).toLocaleTimeString()}</div>
-        <div>Cargo:</div><div>${vessel.cargo_teu.toLocaleString()} TEU</div>
+        <div>Cargo:</div><div><strong>${vessel.cargo_teu.toLocaleString()}</strong> TEU</div>
         <div>Draft:</div><div>${vessel.draft_meters}m</div>
         <div>Berth:</div><div>${vessel.berth_assignment}</div>
         <div>Speed:</div><div>${vessel.speed || 0} kn</div>
@@ -519,17 +642,17 @@ function createVesselPopup(vessel: Vessel): string {
 
 function createBerthPopup(berth: Berth): string {
   return `
-    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 160px;">
+    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 180px;">
       <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div style="width: 8px; height: 8px; border-radius: 50%; background: ${getBerthColor(berth)}; box-shadow: 0 0 8px ${getBerthColor(berth)};"></div>
-        <strong style="color: #00D9FF; font-size: 14px;">${berth.name}</strong>
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: ${getBerthColor(berth)}; box-shadow: 0 0 10px ${getBerthColor(berth)};"></div>
+        <strong style="color: #00D9FF; font-size: 15px;">${berth.name}</strong>
       </div>
       <div style="font-size: 11px; color: #888; margin-bottom: 8px;">${berth.terminal}</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px;">
-        <div>Status:</div><div style="color: ${getBerthColor(berth)}; font-weight: 500;">${berth.status}</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+        <div>Status:</div><div style="color: ${getBerthColor(berth)}; font-weight: 600;">${berth.status}</div>
         <div>Depth:</div><div>${berth.depth_meters}m</div>
         <div>Length:</div><div>${berth.length_meters}m</div>
-        <div>Utilization:</div><div>${berth.utilization}%</div>
+        <div>Utilization:</div><div><strong>${berth.utilization}%</strong></div>
         <div>Cranes:</div><div>${berth.cranes.length}</div>
       </div>
     </div>
@@ -538,15 +661,15 @@ function createBerthPopup(berth: Berth): string {
 
 function createCranePopup(crane: Crane): string {
   return `
-    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 140px;">
+    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 160px;">
       <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div style="width: 8px; height: 8px; border-radius: 50%; background: ${getCraneColor(crane)}; box-shadow: 0 0 8px ${getCraneColor(crane)};"></div>
-        <strong style="color: #00D9FF; font-size: 14px;">${crane.id}</strong>
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: ${getCraneColor(crane)}; box-shadow: 0 0 10px ${getCraneColor(crane)};"></div>
+        <strong style="color: #00D9FF; font-size: 15px;">${crane.id}</strong>
       </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
         <div>Type:</div><div>${crane.type}</div>
-        <div>Status:</div><div style="color: ${getCraneColor(crane)}; font-weight: 500;">${crane.status}</div>
-        <div>Moves/hr:</div><div>${crane.moves_per_hour}</div>
+        <div>Status:</div><div style="color: ${getCraneColor(crane)}; font-weight: 600;">${crane.status}</div>
+        <div>Moves/hr:</div><div><strong>${crane.moves_per_hour}</strong></div>
         <div>Energy:</div><div>${crane.energy_consumption_kwh} kWh</div>
         <div>Berth:</div><div>${crane.berth_id}</div>
       </div>
@@ -554,18 +677,18 @@ function createCranePopup(crane: Crane): string {
   `;
 }
 
-function createTrainPopup(train: Train): string {
+function createTrainPopup(train: TrainType): string {
   return `
-    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 160px;">
+    <div style="color: white; font-family: 'IBM Plex Sans', sans-serif; min-width: 180px;">
       <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div style="width: 8px; height: 8px; border-radius: 50%; background: ${getTrainColor(train)}; box-shadow: 0 0 8px ${getTrainColor(train)};"></div>
-        <strong style="color: #00D9FF; font-size: 14px;">${train.name}</strong>
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: ${getTrainColor(train)}; box-shadow: 0 0 10px ${getTrainColor(train)};"></div>
+        <strong style="color: #00D9FF; font-size: 15px;">${train.name}</strong>
       </div>
       <div style="font-size: 11px; color: #888; margin-bottom: 8px;">${train.operator}</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px;">
-        <div>Status:</div><div style="color: ${getTrainColor(train)}; font-weight: 500;">${train.status}</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+        <div>Status:</div><div style="color: ${getTrainColor(train)}; font-weight: 600;">${train.status}</div>
         <div>Track:</div><div>${train.track}</div>
-        <div>Cargo:</div><div>${train.containers_teu} TEU</div>
+        <div>Cargo:</div><div><strong>${train.containers_teu}</strong> TEU</div>
         <div>Departure:</div><div>${new Date(train.scheduled_departure).toLocaleTimeString()}</div>
         <div>Destination:</div><div style="font-size: 10px;">${train.destination}</div>
       </div>
