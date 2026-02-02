@@ -3,7 +3,7 @@ import type { PortState, Vessel, Berth, Crane, Train, WeatherData, TideData, Ris
 // Hamburg Port coordinates
 const HAMBURG_CENTER = { lat: 53.5411, lon: 9.9937 };
 
-// Mock Vessels
+// Mock Vessels - positions along Elbe River approach and in port
 export const mockVessels: Vessel[] = [
   {
     id: 'MSC_MIA_IMO9876543',
@@ -15,7 +15,7 @@ export const mockVessels: Vessel[] = [
     draft_meters: 14.5,
     cargo_teu: 8500,
     status: 'approaching',
-    position: { lat: 53.89, lon: 8.71 },
+    position: { lat: 53.5420, lon: 9.8850 }, // Approaching from west on Elbe
     speed: 12.5,
     heading: 95,
   },
@@ -28,9 +28,9 @@ export const mockVessels: Vessel[] = [
     draft_meters: 16.5,
     cargo_teu: 23992,
     status: 'approaching',
-    position: { lat: 53.95, lon: 8.45 },
+    position: { lat: 53.5480, lon: 9.8600 }, // Further west on Elbe approach
     speed: 10.2,
-    heading: 110,
+    heading: 100,
   },
   {
     id: 'CMA_CGM_VELA_IMO9454395',
@@ -41,7 +41,7 @@ export const mockVessels: Vessel[] = [
     draft_meters: 15.2,
     cargo_teu: 11388,
     status: 'approaching',
-    position: { lat: 53.87, lon: 8.95 },
+    position: { lat: 53.5395, lon: 9.9100 }, // Closer, entering port area
     speed: 8.7,
     heading: 88,
   },
@@ -54,9 +54,9 @@ export const mockVessels: Vessel[] = [
     draft_meters: 14.8,
     cargo_teu: 15226,
     status: 'approaching',
-    position: { lat: 53.92, lon: 8.62 },
+    position: { lat: 53.5450, lon: 9.8750 }, // Mid-approach
     speed: 11.3,
-    heading: 102,
+    heading: 92,
   },
   {
     id: 'HMM_ALGECIRAS_IMO9863297',
@@ -67,9 +67,9 @@ export const mockVessels: Vessel[] = [
     draft_meters: 16.0,
     cargo_teu: 23964,
     status: 'waiting',
-    position: { lat: 53.88, lon: 8.52 },
-    speed: 5.2,
-    heading: 0,
+    position: { lat: 53.5320, lon: 9.8950 }, // Waiting area south of channel
+    speed: 0,
+    heading: 45,
   },
   {
     id: 'HAPAG_LLOYD_BERLIN_IMO9782450',
@@ -80,7 +80,7 @@ export const mockVessels: Vessel[] = [
     draft_meters: 13.5,
     cargo_teu: 7500,
     status: 'berthed',
-    position: { lat: 53.5355, lon: 9.9345 },
+    position: { lat: 53.5355, lon: 9.9345 }, // At berth
     speed: 0,
     heading: 270,
   },

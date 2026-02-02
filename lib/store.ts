@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PortState, Vessel, Berth, Disruption, OptimizationResult, ChatMessage, RiskAlert, Metrics } from './types';
 import { mockPortState, mockMetrics } from './mock-data';
+import { liveDataService, weatherService, tideService } from './live-data-service';
 
 interface QradhaStore {
   // Port State
@@ -39,6 +40,12 @@ interface QradhaStore {
   setActivePanel: (panel: 'map' | '3d' | 'metrics' | 'schedule') => void;
   isDisruptionPanelOpen: boolean;
   setIsDisruptionPanelOpen: (open: boolean) => void;
+  
+  // Live Data
+  isLiveMode: boolean;
+  setIsLiveMode: (live: boolean) => void;
+  initializeLiveData: (aisApiKey?: string) => Promise<void>;
+  refreshLiveData: () => Promise<void>;
   
   // Simulation
   simulateDisruption: (input: string) => Promise<Disruption>;
@@ -91,6 +98,71 @@ export const useQradhaStore = create<QradhaStore>((set, get) => ({
   setActivePanel: (panel) => set({ activePanel: panel }),
   isDisruptionPanelOpen: false,
   setIsDisruptionPanelOpen: (open) => set({ isDisruptionPanelOpen: open }),
+  
+  // Live Data
+  isLiveMode: false,
+  setIsLiveMode: (live) => set({ isLiveMode: live }),
+  
+  initializeLiveData: async (aisApiKey?: string) => {
+    try {
+      // Initialize live data service
+      await liveDataService.initialize(aisApiKey);
+      
+      // Subscribe to vessel updates
+      liveDataService.subscribeToVessels('store', (liveVessels) => {
+        if (liveVessels.length > 0) {
+          const currentState = get().portState;
+          // Merge live vessels with mock vessels (prefer live data)
+          const mergedVessels = [...liveVessels];
+          // Keep mock vessels that aren't in live data for demo purposes
+          currentState.vessels.forEach(mockVessel => {
+            if (!liveVessels.find(lv => lv.imo === mockVessel.imo)) {
+              mergedVessels.push(mockVessel);
+            }
+          });
+          set({ 
+            portState: { ...currentState, vessels: mergedVessels },
+            isLiveMode: true 
+          });
+        }
+      });
+      
+      // Update weather data
+      const weather = await weatherService.getWeather();
+      const tides = await tideService.getTides();
+      
+      set((state) => ({
+        portState: {
+          ...state.portState,
+          weather,
+          tides,
+        },
+        isLiveMode: true,
+      }));
+      
+    } catch (error) {
+      console.error('Failed to initialize live data:', error);
+    }
+  },
+  
+  refreshLiveData: async () => {
+    try {
+      const [weather, tides] = await Promise.all([
+        weatherService.getWeather(),
+        tideService.getTides(),
+      ]);
+      
+      set((state) => ({
+        portState: {
+          ...state.portState,
+          weather,
+          tides,
+        },
+      }));
+    } catch (error) {
+      console.error('Failed to refresh live data:', error);
+    }
+  },
   
   // Simulation functions (mock implementations)
   simulateDisruption: async (input: string): Promise<Disruption> => {

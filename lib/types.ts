@@ -105,13 +105,15 @@ export interface ScheduleChange {
 
 // Weather Types
 export interface WeatherData {
-  timestamp: string;
+  timestamp?: string;
   wind_speed_kmh: number;
-  wind_direction: number;
+  wind_direction: number | string;
   wave_height_m: number;
   visibility_km: number;
   fog_probability: number;
-  precipitation_mm: number;
+  precipitation_mm?: number;
+  temperature_c?: number;
+  conditions?: string;
 }
 
 // Tide Types
@@ -121,6 +123,7 @@ export interface TideData {
   height_m: number;
   window_open?: string;
   window_close?: string;
+  isWindowOpen?: boolean;
 }
 
 // Risk Alert Types

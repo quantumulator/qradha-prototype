@@ -98,120 +98,276 @@ export default function ChatPanel() {
     }
   };
 
-  // Download report as PDF
+  // Download report as PDF with professional formatting
   const downloadReportAsPdf = (portStateData: typeof portState, reportContent: string) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 20;
-    const lineHeight = 7;
     let y = 20;
 
-    // Helper to add text with word wrap
-    const addText = (text: string, fontSize: number = 10, isBold: boolean = false, color: [number, number, number] = [255, 255, 255]) => {
-      doc.setFontSize(fontSize);
-      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-      doc.setTextColor(color[0], color[1], color[2]);
-      const lines = doc.splitTextToSize(text, pageWidth - margin * 2);
-      lines.forEach((line: string) => {
-        if (y > 280) {
-          doc.addPage();
-          y = 20;
-        }
-        doc.text(line, margin, y);
-        y += lineHeight;
-      });
+    // Colors
+    const colors = {
+      cyan: [0, 217, 255] as [number, number, number],
+      navy: [10, 25, 41] as [number, number, number],
+      white: [255, 255, 255] as [number, number, number],
+      gray: [150, 150, 150] as [number, number, number],
+      darkGray: [80, 80, 80] as [number, number, number],
+      green: [34, 197, 94] as [number, number, number],
+      orange: [255, 107, 53] as [number, number, number],
+      red: [255, 46, 99] as [number, number, number],
     };
 
-    // Header
-    doc.setFillColor(10, 25, 41);
-    doc.rect(0, 0, pageWidth, 50, 'F');
-    doc.setFontSize(24);
-    doc.setTextColor(0, 217, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.text('QRADHA', margin, 25);
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Quantum Resilient Adaptive Dynamic Hamburg Engine', margin, 35);
-    doc.setFontSize(10);
-    doc.text(`Report Generated: ${new Date().toLocaleString()}`, margin, 45);
-    
-    y = 60;
+    // Helper: Check page break
+    const checkPageBreak = (height: number) => {
+      if (y + height > 270) {
+        doc.addPage();
+        y = 20;
+        return true;
+      }
+      return false;
+    };
 
-    // Title
-    addText('Port Operations Report', 18, true, [0, 217, 255]);
-    addText(`Hamburg Port - ${new Date().toLocaleDateString()}`, 12, false, [150, 150, 150]);
-    y += 10;
+    // Helper: Draw section header
+    const drawSectionHeader = (title: string) => {
+      checkPageBreak(20);
+      doc.setFillColor(colors.cyan[0], colors.cyan[1], colors.cyan[2]);
+      doc.rect(margin, y, pageWidth - margin * 2, 10, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(colors.navy[0], colors.navy[1], colors.navy[2]);
+      doc.text(title, margin + 4, y + 7);
+      y += 15;
+    };
 
-    // Executive Summary
-    addText('Executive Summary', 14, true, [0, 217, 255]);
-    y += 5;
-    const summaryLines = reportContent.split('\n').slice(0, 10);
-    summaryLines.forEach(line => {
-      if (line.trim()) addText(line.replace(/[#*]/g, '').trim(), 10, false, [100, 100, 100]);
-    });
-    y += 10;
-
-    // Key Metrics
-    addText('Key Metrics', 14, true, [0, 217, 255]);
-    y += 5;
-    addText(`• Throughput: 42,085.69 TEU (+9.8%)`, 10, false, [100, 100, 100]);
-    addText(`• Energy Usage: 89,660 kWh (-13.8%)`, 10, false, [100, 100, 100]);
-    addText(`• Rail Modal Share: 52.3%`, 10, false, [100, 100, 100]);
-    addText(`• CO₂ Saved: 18.7 tons`, 10, false, [100, 100, 100]);
-    addText(`• Avg Turnaround: 22.1 hours (-10.9%)`, 10, false, [100, 100, 100]);
-    addText(`• Resilience Score: ${(portStateData.resilience_score * 100).toFixed(0)}%`, 10, false, [100, 100, 100]);
-    y += 10;
-
-    // Vessels
-    addText('Active Vessels', 14, true, [0, 217, 255]);
-    y += 5;
-    portStateData.vessels.forEach(v => {
-      addText(`• ${v.name} (IMO: ${v.imo}) - Status: ${v.status}, Cargo: ${v.cargo_teu.toLocaleString()} TEU`, 9, false, [100, 100, 100]);
-    });
-    y += 10;
-
-    // Berths
-    addText('Berth Status', 14, true, [0, 217, 255]);
-    y += 5;
-    portStateData.berths.forEach(b => {
-      addText(`• ${b.name} - ${b.status}, Utilization: ${b.utilization}%`, 9, false, [100, 100, 100]);
-    });
-    y += 10;
-
-    // Trains
-    addText('Rail Operations', 14, true, [0, 217, 255]);
-    y += 5;
-    portStateData.trains.forEach(t => {
-      addText(`• ${t.name} (${t.operator}) - ${t.status}, ${t.containers_teu} TEU → ${t.destination}`, 9, false, [100, 100, 100]);
-    });
-    y += 10;
-
-    // Weather
-    addText('Weather Conditions', 14, true, [0, 217, 255]);
-    y += 5;
-    addText(`• Wind: ${portStateData.weather.wind_speed_kmh} km/h`, 9, false, [100, 100, 100]);
-    addText(`• Visibility: ${portStateData.weather.visibility_km} km`, 9, false, [100, 100, 100]);
-    addText(`• Wave Height: ${portStateData.weather.wave_height_m} m`, 9, false, [100, 100, 100]);
-    addText(`• Fog Probability: ${(portStateData.weather.fog_probability * 100).toFixed(0)}%`, 9, false, [100, 100, 100]);
-    y += 10;
-
-    // Alerts
-    if (portStateData.alerts.length > 0) {
-      addText('Active Alerts', 14, true, [255, 107, 53]);
-      y += 5;
-      portStateData.alerts.forEach(a => {
-        const severityColor: [number, number, number] = a.severity === 'critical' ? [255, 46, 99] : a.severity === 'high' ? [255, 107, 53] : [234, 179, 8];
-        addText(`[${a.severity.toUpperCase()}] ${a.message}`, 9, false, severityColor);
+    // Helper: Draw table
+    const drawTable = (headers: string[], rows: string[][], colWidths: number[]) => {
+      const rowHeight = 8;
+      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+      
+      checkPageBreak(rowHeight * (rows.length + 1) + 5);
+      
+      // Header row
+      doc.setFillColor(30, 40, 60);
+      doc.rect(margin, y, tableWidth, rowHeight, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...colors.cyan);
+      
+      let xOffset = margin;
+      headers.forEach((header, i) => {
+        doc.text(header, xOffset + 2, y + 5.5);
+        xOffset += colWidths[i];
       });
+      y += rowHeight;
+      
+      // Data rows
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...colors.darkGray);
+      
+      rows.forEach((row, rowIndex) => {
+        checkPageBreak(rowHeight);
+        
+        // Alternate row background
+        if (rowIndex % 2 === 0) {
+          doc.setFillColor(245, 245, 245);
+          doc.rect(margin, y, tableWidth, rowHeight, 'F');
+        }
+        
+        xOffset = margin;
+        row.forEach((cell, i) => {
+          const truncated = cell.length > 25 ? cell.substring(0, 22) + '...' : cell;
+          doc.text(truncated, xOffset + 2, y + 5.5);
+          xOffset += colWidths[i];
+        });
+        y += rowHeight;
+      });
+      
+      // Table border
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(margin, y - rowHeight * (rows.length + 1), tableWidth, rowHeight * (rows.length + 1));
+      y += 8;
+    };
+
+    // Helper: Draw metric box
+    const drawMetricBox = (label: string, value: string, trend: string, x: number, width: number) => {
+      doc.setFillColor(245, 247, 250);
+      doc.roundedRect(x, y, width, 25, 3, 3, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.gray);
+      doc.text(label, x + 4, y + 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(...colors.darkGray);
+      doc.text(value, x + 4, y + 18);
+      doc.setFontSize(8);
+      doc.setTextColor(trend.startsWith('+') || trend.startsWith('↑') ? colors.green[0] : trend.startsWith('-') || trend.startsWith('↓') ? colors.red[0] : colors.gray[0], 
+                       trend.startsWith('+') || trend.startsWith('↑') ? colors.green[1] : trend.startsWith('-') || trend.startsWith('↓') ? colors.red[1] : colors.gray[1],
+                       trend.startsWith('+') || trend.startsWith('↑') ? colors.green[2] : trend.startsWith('-') || trend.startsWith('↓') ? colors.red[2] : colors.gray[2]);
+      doc.text(trend, x + width - 15, y + 8);
+    };
+
+    // ===== HEADER =====
+    doc.setFillColor(...colors.navy);
+    doc.rect(0, 0, pageWidth, 45, 'F');
+    
+    doc.setFontSize(28);
+    doc.setTextColor(...colors.cyan);
+    doc.setFont('helvetica', 'bold');
+    doc.text('QRADHA', margin, 22);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.gray);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Quantum Resilient Adaptive Dynamic Hamburg Engine', margin, 32);
+    
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} CET`, pageWidth - margin - 60, 22);
+    doc.text('Hamburg Port Authority', pageWidth - margin - 60, 32);
+    
+    y = 55;
+
+    // ===== REPORT TITLE =====
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...colors.darkGray);
+    doc.text('Port Operations Report', margin, y);
+    y += 8;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...colors.gray);
+    doc.text(`Reporting Period: ${new Date(Date.now() - 24*60*60*1000).toLocaleDateString()} - ${new Date().toLocaleDateString()}`, margin, y);
+    y += 15;
+
+    // ===== KEY METRICS =====
+    drawSectionHeader('KEY PERFORMANCE METRICS');
+    
+    const metricWidth = (pageWidth - margin * 2 - 15) / 4;
+    drawMetricBox('Throughput', '42,086 TEU', '+9.8%', margin, metricWidth);
+    drawMetricBox('Energy Usage', '89,660 kWh', '↓13.8%', margin + metricWidth + 5, metricWidth);
+    drawMetricBox('Rail Modal Share', '52.3%', '+2.3%', margin + (metricWidth + 5) * 2, metricWidth);
+    drawMetricBox('CO₂ Saved', '18.7 tons', '↑5.2%', margin + (metricWidth + 5) * 3, metricWidth);
+    y += 30;
+    
+    drawMetricBox('Avg Turnaround', '22.1 hrs', '↓10.9%', margin, metricWidth);
+    drawMetricBox('Resilience Score', `${(portStateData.resilience_score * 100).toFixed(0)}%`, '', margin + metricWidth + 5, metricWidth);
+    drawMetricBox('Current Delays', '2.8 hrs', '', margin + (metricWidth + 5) * 2, metricWidth);
+    drawMetricBox('Berth Utilization', '54%', '-10%', margin + (metricWidth + 5) * 3, metricWidth);
+    y += 35;
+
+    // ===== VESSEL STATUS =====
+    drawSectionHeader('VESSEL OPERATIONS');
+    
+    const vesselRows = portStateData.vessels.map(v => [
+      v.name,
+      v.imo,
+      v.status.charAt(0).toUpperCase() + v.status.slice(1),
+      v.cargo_teu.toLocaleString() + ' TEU',
+      v.berth_assignment,
+      new Date(v.eta).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    ]);
+    
+    drawTable(
+      ['Vessel Name', 'IMO', 'Status', 'Cargo', 'Berth', 'ETA'],
+      vesselRows,
+      [45, 30, 30, 30, 20, 20]
+    );
+
+    // ===== BERTH STATUS =====
+    drawSectionHeader('BERTH UTILIZATION');
+    
+    const berthRows = portStateData.berths.map(b => [
+      b.name.split(' - ')[0],
+      b.terminal.replace('Container Terminal ', ''),
+      b.status.charAt(0).toUpperCase() + b.status.slice(1),
+      b.depth_meters + 'm',
+      b.utilization + '%'
+    ]);
+    
+    drawTable(
+      ['Berth', 'Terminal', 'Status', 'Depth', 'Utilization'],
+      berthRows,
+      [25, 45, 30, 25, 30]
+    );
+
+    // ===== RAIL OPERATIONS =====
+    drawSectionHeader('RAIL OPERATIONS');
+    
+    const trainRows = portStateData.trains.map(t => [
+      t.name,
+      t.operator,
+      t.status.charAt(0).toUpperCase() + t.status.slice(1),
+      t.containers_teu + ' TEU',
+      t.destination
+    ]);
+    
+    drawTable(
+      ['Train', 'Operator', 'Status', 'Cargo', 'Destination'],
+      trainRows,
+      [35, 35, 25, 25, 35]
+    );
+
+    // ===== WEATHER CONDITIONS =====
+    drawSectionHeader('ENVIRONMENTAL CONDITIONS');
+    
+    const weatherRows = [
+      ['Wind Speed', portStateData.weather.wind_speed_kmh + ' km/h', portStateData.weather.wind_speed_kmh > 40 ? 'Caution' : 'Normal'],
+      ['Visibility', portStateData.weather.visibility_km + ' km', portStateData.weather.visibility_km < 5 ? 'Reduced' : 'Good'],
+      ['Wave Height', portStateData.weather.wave_height_m + ' m', portStateData.weather.wave_height_m > 2 ? 'Moderate' : 'Calm'],
+      ['Fog Probability', (portStateData.weather.fog_probability * 100).toFixed(0) + '%', portStateData.weather.fog_probability > 0.3 ? 'Risk' : 'Low'],
+    ];
+    
+    drawTable(['Condition', 'Value', 'Assessment'], weatherRows, [50, 50, 55]);
+
+    // ===== ALERTS =====
+    if (portStateData.alerts.length > 0) {
+      drawSectionHeader('ACTIVE ALERTS');
+      
+      const alertRows = portStateData.alerts.map(a => [
+        a.severity.toUpperCase(),
+        a.type.replace(/_/g, ' '),
+        a.message.substring(0, 60) + (a.message.length > 60 ? '...' : '')
+      ]);
+      
+      drawTable(['Severity', 'Type', 'Message'], alertRows, [30, 40, 85]);
     }
 
-    // Footer
-    doc.setFillColor(10, 25, 41);
-    doc.rect(0, 285, pageWidth, 15, 'F');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Qradha - Quantum-Inspired Port Synchronization', margin, 292);
-    doc.text('© 2026 Quantumulator', pageWidth - margin - 50, 292);
+    // ===== AI ANALYSIS SUMMARY =====
+    checkPageBreak(50);
+    drawSectionHeader('AI ANALYSIS SUMMARY');
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.darkGray);
+    
+    // Parse and display key points from report content
+    const lines = reportContent.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+    const summaryText = lines.slice(0, 8).join(' ').replace(/[*#]/g, '').trim();
+    const splitText = doc.splitTextToSize(summaryText, pageWidth - margin * 2);
+    splitText.forEach((line: string) => {
+      checkPageBreak(6);
+      doc.text(line, margin, y);
+      y += 6;
+    });
+    y += 10;
+
+    // ===== FOOTER =====
+    const addFooter = () => {
+      doc.setFillColor(...colors.navy);
+      doc.rect(0, 282, pageWidth, 15, 'F');
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.gray);
+      doc.text('Qradha - Quantum-Inspired Port Synchronization | Hamburg Port Authority', margin, 289);
+      doc.text('© 2026 Quantumulator', pageWidth - margin - 35, 289);
+      doc.text(`Page ${doc.getNumberOfPages()}`, pageWidth / 2, 289, { align: 'center' });
+    };
+    
+    // Add footer to all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      addFooter();
+    }
 
     // Save
     const dateStr = new Date().toISOString().split('T')[0];

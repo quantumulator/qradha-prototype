@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useQradhaStore } from '@/lib/store';
 import Header from '@/components/Header';
 import MetricsPanel from '@/components/MetricsPanel';
@@ -22,7 +22,25 @@ const QuantumVisualization = dynamic(() => import('@/components/QuantumVisualiza
 });
 
 export default function Home() {
-  const { activePanel } = useQradhaStore();
+  const { activePanel, initializeLiveData, refreshLiveData, isLiveMode } = useQradhaStore();
+
+  // Initialize live data on mount
+  useEffect(() => {
+    // Get API key from environment
+    const aisApiKey = process.env.NEXT_PUBLIC_AISSTREAM_API_KEY;
+    
+    // Initialize live data service
+    initializeLiveData(aisApiKey);
+    
+    // Set up periodic refresh for weather and tides (every 5 minutes)
+    const refreshInterval = setInterval(() => {
+      refreshLiveData();
+    }, 5 * 60 * 1000);
+    
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [initializeLiveData, refreshLiveData]);
 
   return (
     <div className="h-screen flex flex-col bg-navy">
@@ -40,6 +58,13 @@ export default function Home() {
         
         {/* Main Panel */}
         <main className="flex-1 relative">
+          {/* Live mode indicator */}
+          {isLiveMode && (
+            <div className="absolute top-4 right-4 z-10 px-3 py-1 bg-green-500/20 text-green-400 text-xs font-medium rounded-full flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              LIVE
+            </div>
+          )}
           <ErrorBoundary>
             <Suspense fallback={activePanel === 'map' ? <MapSkeleton /> : <VisualizationSkeleton />}>
               {activePanel === 'map' && <PortMap />}

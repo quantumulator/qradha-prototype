@@ -8,8 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Play, Ship, Train, Anchor, Cog } from 'lucide-react';
 import type { Vessel, Berth, Crane, Train as TrainType } from '@/lib/types';
 
-// Hamburg Port coordinates
-const HAMBURG_CENTER: [number, number] = [9.9537, 53.5311];
+// Hamburg Port coordinates - centered to show both port and approach
+const HAMBURG_CENTER: [number, number] = [9.9100, 53.5380];
 
 // Layer visibility state
 type LayerType = 'vessels' | 'berths' | 'cranes' | 'trains';

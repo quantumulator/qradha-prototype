@@ -68,7 +68,8 @@ export default function DisruptionPanel() {
     currentDisruption,
     isOptimizing,
     lastOptimization,
-    setCurrentDisruption
+    setCurrentDisruption,
+    setLastOptimization
   } = useQradhaStore();
 
   const handleTemplateSelect = (templateId: string) => {
@@ -103,6 +104,7 @@ export default function DisruptionPanel() {
     setDelayMinutes(240);
     setCustomDescription('');
     setCurrentDisruption(null);
+    setLastOptimization(null); // Clear last optimization to show form again
   };
 
   return (
