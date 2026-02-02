@@ -1,7 +1,25 @@
 // Groq AI Agent Service for Qradha
-// Implements the 5 AI agents from agents.md
+// Uses Tauri backend for secure API key handling
 
 import type { Disruption, OptimizationResult, PortState, Scenario, RiskAlert } from './types';
+
+// Tauri invoke helper - lazy loaded to work with SSR
+let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
+
+async function getTauriInvoke() {
+  if (tauriInvoke) return tauriInvoke;
+  
+  if (typeof window !== 'undefined' && '__TAURI__' in window) {
+    try {
+      const tauri = await import('@tauri-apps/api/core');
+      tauriInvoke = tauri.invoke;
+      return tauriInvoke;
+    } catch {
+      console.warn('Tauri API not available');
+    }
+  }
+  return null;
+}
 
 // Agent Types
 export interface AgentResponse<T> {
@@ -37,149 +55,101 @@ export interface ReportSynthesisResponse {
   key_metrics: Record<string, number>;
 }
 
-// Groq API Configuration
+// Fallback browser-based API for development
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Model selection per agent (from agents.md)
-const AGENT_MODELS = {
-  disruption_parser: 'llama-3.1-70b-versatile',    // Accuracy for complex parsing
-  scenario_generator: 'mixtral-8x7b-32768',         // Creative scenario generation
-  optimization_insight: 'llama-3.1-70b-versatile', // Reasoning depth
-  predictive_resilience: 'llama-3.1-8b-instant',   // Fast inference for real-time
-  report_synthesis: 'llama-3.1-70b-versatile',     // Comprehensive synthesis
-};
-
-// Agent prompts
-const PROMPTS = {
-  disruption_parser: `You are an expert port operations assistant for Hamburg Port. Your task is to parse natural language disruption descriptions into structured JSON.
-
-RULES:
-1. Extract vessel identifiers (name, IMO number if mentioned)
-2. Calculate delay in minutes from original ETA
-3. Categorize cause: weather_fog, weather_storm, weather_ice, mechanical_failure, tidal_miss, congestion, customs_delay, other
-4. Identify any berth changes mentioned
-5. Set confidence score (0.0-1.0) based on clarity of input
-6. List clarifications needed if input is ambiguous
-
-OUTPUT FORMAT (JSON only, no explanation):
-{
-  "disruption_type": "vessel_delay" | "equipment_failure" | "weather_event" | "rail_delay",
-  "vessel_id": "VESSEL_NAME_IMO_NUMBER",
-  "delay_minutes": number,
-  "cause": "category",
-  "berth_change": {"from": "berth_X", "to": "berth_Y"} | null,
-  "confidence": 0.0-1.0,
-  "clarifications_needed": ["question1", "question2"]
-}
-
-EXAMPLES:
-Input: "MSC Mia delayed by 4 hours due to fog, arriving at berth 3 instead of berth 1"
-Output: {"disruption_type": "vessel_delay", "vessel_id": "MSC_MIA", "delay_minutes": 240, "cause": "weather_fog", "berth_change": {"from": "berth_1", "to": "berth_3"}, "confidence": 0.95, "clarifications_needed": []}`,
-
-  scenario_generator: `You are a port operations scenario planner for Hamburg Port. Generate realistic "what-if" scenarios to stress-test port resilience.
-
-Based on the current port state, generate plausible disruption scenarios. Consider:
-- Weather patterns (North Sea storms, fog, ice)
-- Equipment failures (crane breakdowns, rail issues)
-- Vessel delays (tidal misses, mechanical problems)
-- Cascading effects
-
-OUTPUT FORMAT (JSON):
-{
-  "scenarios": [
-    {
-      "scenario_id": "scenario_YYYY_MM_DD_XXX",
-      "name": "Brief scenario name",
-      "description": "Detailed description",
-      "disruptions": [...],
-      "estimated_impact": {
-        "affected_containers": number,
-        "rail_delays_minutes": number,
-        "truck_queue_increase": "percentage%"
-      },
-      "probability": "low" | "moderate" | "high"
-    }
-  ]
-}`,
-
-  optimization_insight: `You are an optimization insights specialist for Hamburg Port's quantum-inspired optimization system.
-
-Explain optimization decisions in operator-friendly language. For each optimization run:
-1. Summarize the throughput/cost improvement achieved
-2. Explain key changes (berth reassignments, crane reallocations, rail slot changes)
-3. Highlight trade-offs operators should be aware of
-4. Provide the "Quantum Insight" - what the algorithm discovered that wasn't obvious
-
-Format as markdown with headers and bullet points for readability.`,
-
-  predictive_resilience: `You are a predictive resilience agent for Hamburg Port. Monitor incoming data and anticipate disruptions.
-
-Analyze the current port state and identify:
-1. Vessels at risk of missing tidal windows
-2. Potential congestion points
-3. Equipment that may need attention
-4. Rail capacity constraints
-
-OUTPUT FORMAT (JSON):
-{
-  "risk_alerts": [
-    {
-      "type": "tidal_risk" | "weather_risk" | "congestion_risk" | "equipment_risk" | "rail_saturation",
-      "severity": "low" | "medium" | "high" | "critical",
-      "vessel": "optional vessel name",
-      "message": "Human-readable alert message",
-      "recommendation": "Suggested action",
-      "probability": 0.0-1.0
-    }
-  ],
-  "resilience_score": 0.0-1.0,
-  "explanation": "Brief explanation of overall port resilience"
-}`,
-
-  report_synthesis: `You are a report synthesis agent for Hamburg Port. Generate executive summaries and performance reports.
-
-Create well-formatted markdown reports including:
-- Key performance metrics (throughput, energy, emissions)
-- Major events and how they were handled
-- Sustainability impact (CO2 saved, modal shift to rail)
-- Recommendations for future operations
-
-Use headers, bullet points, and tables for clarity.`,
-};
-
 class GroqAgent {
-  private apiKey: string | null = null;
+  private browserApiKey: string | null = null;
+  private tauriAvailable: boolean | null = null;
 
+  // Check if Tauri backend is available
+  async checkTauriAvailable(): Promise<boolean> {
+    if (this.tauriAvailable !== null) return this.tauriAvailable;
+    
+    const invoke = await getTauriInvoke();
+    if (!invoke) {
+      this.tauriAvailable = false;
+      return false;
+    }
+    
+    try {
+      const hasKey = await invoke('get_groq_status') as boolean;
+      this.tauriAvailable = true;
+      return hasKey;
+    } catch {
+      this.tauriAvailable = false;
+      return false;
+    }
+  }
+
+  // Set API key for browser fallback (development mode)
   setApiKey(key: string) {
-    this.apiKey = key;
+    this.browserApiKey = key;
     if (typeof window !== 'undefined') {
       localStorage.setItem('groq_api_key', key);
     }
   }
 
+  // Get API key from localStorage (browser fallback)
   getApiKey(): string | null {
-    if (this.apiKey) return this.apiKey;
+    if (this.browserApiKey) return this.browserApiKey;
     if (typeof window !== 'undefined') {
       return localStorage.getItem('groq_api_key');
     }
     return null;
   }
 
-  isConfigured(): boolean {
+  // Check if configured (either Tauri or browser key)
+  async isConfigured(): Promise<boolean> {
+    // Check Tauri first
+    const tauriConfigured = await this.checkTauriAvailable();
+    if (tauriConfigured) return true;
+    
+    // Fallback to browser key
     return !!this.getApiKey();
   }
 
+  // Main method to call Groq - uses Tauri backend if available, browser fallback otherwise
   private async callGroq(
-    model: string,
-    systemPrompt: string,
+    agentType: string,
     userMessage: string,
-    temperature: number = 0.2,
-    maxTokens: number = 2048
+    context?: string
+  ): Promise<string> {
+    const invoke = await getTauriInvoke();
+    
+    // Try Tauri backend first
+    if (invoke) {
+      try {
+        const response = await invoke('call_groq_agent', {
+          agentType,
+          userMessage,
+          context: context || null,
+        }) as string;
+        return response;
+      } catch (error) {
+        console.warn('Tauri Groq call failed, falling back to browser:', error);
+        // Fall through to browser fallback
+      }
+    }
+    
+    // Browser fallback for development
+    return this.browserFallback(agentType, userMessage, context);
+  }
+
+  // Browser fallback for development mode
+  private async browserFallback(
+    agentType: string,
+    userMessage: string,
+    context?: string
   ): Promise<string> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
-      throw new Error('Groq API key not configured. Please set your API key in settings.');
+      throw new Error('Groq API key not configured. Please set your API key in settings or configure the .env file.');
     }
+
+    const model = this.getModelForAgent(agentType);
+    const temperature = this.getTemperatureForAgent(agentType);
+    const systemPrompt = this.getSystemPrompt(agentType, context);
 
     const response = await fetch(GROQ_API_URL, {
       method: 'POST',
@@ -194,7 +164,7 @@ class GroqAgent {
           { role: 'user', content: userMessage },
         ],
         temperature,
-        max_tokens: maxTokens,
+        max_tokens: 2048,
       }),
     });
 
@@ -205,6 +175,122 @@ class GroqAgent {
 
     const data = await response.json();
     return data.choices[0]?.message?.content || '';
+  }
+
+  private getModelForAgent(agentType: string): string {
+    switch (agentType) {
+      case 'disruption_parser':
+      case 'optimization_insight':
+      case 'report_synthesis':
+        return 'llama-3.1-70b-versatile';
+      case 'scenario_generator':
+        return 'mixtral-8x7b-32768';
+      case 'predictive_resilience':
+        return 'llama-3.1-8b-instant';
+      default:
+        return 'llama-3.1-70b-versatile';
+    }
+  }
+
+  private getTemperatureForAgent(agentType: string): number {
+    switch (agentType) {
+      case 'disruption_parser':
+      case 'predictive_resilience':
+        return 0.2;
+      case 'optimization_insight':
+        return 0.3;
+      case 'report_synthesis':
+        return 0.4;
+      case 'scenario_generator':
+        return 0.7;
+      default:
+        return 0.5;
+    }
+  }
+
+  private getSystemPrompt(agentType: string, context?: string): string {
+    const portContext = context || 'Port of Hamburg - Current operations normal';
+    
+    switch (agentType) {
+      case 'disruption_parser':
+        return `You are an expert port operations assistant for Hamburg Port. Parse natural language disruption descriptions into structured JSON.
+
+Current Context: ${portContext}
+
+OUTPUT FORMAT (JSON only):
+{
+  "disruption_type": "vessel_delay" | "equipment_failure" | "weather_event" | "rail_delay",
+  "vessel_id": "VESSEL_NAME",
+  "delay_minutes": number,
+  "cause": "category",
+  "berth_change": {"from": "berth_X", "to": "berth_Y"} | null,
+  "confidence": 0.0-1.0,
+  "recommendations": ["action1", "action2"]
+}`;
+
+      case 'scenario_generator':
+        return `You are a port operations scenario planner for Hamburg Port. Generate realistic disruption scenarios.
+
+Current Context: ${portContext}
+
+OUTPUT FORMAT (JSON):
+{
+  "scenarios": [
+    {
+      "scenario_id": "scenario_XXX",
+      "name": "string",
+      "description": "string",
+      "severity": "minor" | "moderate" | "severe" | "catastrophic",
+      "disruptions": [...],
+      "estimated_impact": {...},
+      "probability": "low" | "moderate" | "high"
+    }
+  ]
+}`;
+
+      case 'optimization_insight':
+        return `You are an optimization analyst for Hamburg Port's quantum-inspired scheduling system. Explain optimization decisions clearly.
+
+Current Context: ${portContext}
+
+Provide:
+1. Key improvements achieved
+2. Trade-offs operators should know
+3. Quantum algorithm insights
+Use markdown formatting.`;
+
+      case 'predictive_resilience':
+        return `You are a predictive analytics agent for Hamburg Port. Monitor operations and anticipate disruptions.
+
+Current Context: ${portContext}
+
+OUTPUT FORMAT (JSON):
+{
+  "risk_level": "low" | "medium" | "high" | "critical",
+  "risk_alerts": [...],
+  "resilience_score": 0.0-1.0,
+  "next_critical_window": "timestamp"
+}`;
+
+      case 'report_synthesis':
+        return `You are a report generator for Hamburg Port's Qradha system. Create professional reports.
+
+Current Context: ${portContext}
+
+Include:
+- Executive summary
+- Key metrics
+- Sustainability impact
+- Recommendations
+Use markdown formatting.`;
+
+      default:
+        return `You are Qradha, an intelligent assistant for Hamburg Port's quantum-inspired optimization system.
+
+Current Context: ${portContext}
+
+Help with port operations, disruptions, optimization, and sustainability.`;
+    }
   }
 
   // Disruption Parser Agent
@@ -219,13 +305,7 @@ class GroqAgent {
 Current berths: ${portState.berths.map(b => b.name).join(', ')}
 Current time: ${new Date().toISOString()}`;
 
-      const response = await this.callGroq(
-        AGENT_MODELS.disruption_parser,
-        PROMPTS.disruption_parser + '\n\nCONTEXT:\n' + context,
-        userInput,
-        0.2,
-        1024
-      );
+      const response = await this.callGroq('disruption_parser', userInput, context);
 
       // Extract JSON from response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -265,16 +345,9 @@ Current time: ${new Date().toISOString()}`;
 - Berths: ${portState.berths.filter(b => b.status === 'available').length}/${portState.berths.length} available
 - Weather: Wind ${portState.weather.wind_speed_kmh}km/h, Visibility ${portState.weather.visibility_km}km
 - Next tide: ${portState.tides[0]?.type} at ${portState.tides[0]?.timestamp}
-- Current alerts: ${portState.alerts.length}
 ${focus ? `\nFocus area: ${focus}` : ''}`;
 
-      const response = await this.callGroq(
-        AGENT_MODELS.scenario_generator,
-        PROMPTS.scenario_generator,
-        context,
-        0.7,
-        2048
-      );
+      const response = await this.callGroq('scenario_generator', context);
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -314,16 +387,9 @@ ${focus ? `\nFocus area: ${focus}` : ''}`;
 
 Port context:
 - Total vessels: ${portState.vessels.length}
-- Active cranes: ${portState.cranes.filter(c => c.status === 'active').length}
-- Rail capacity utilization: ~60%`;
+- Active cranes: ${portState.cranes.filter(c => c.status === 'active').length}`;
 
-      const response = await this.callGroq(
-        AGENT_MODELS.optimization_insight,
-        PROMPTS.optimization_insight,
-        context,
-        0.3,
-        1536
-      );
+      const response = await this.callGroq('optimization_insight', context);
 
       return {
         success: true,
@@ -357,24 +423,25 @@ ${portState.vessels.map(v => `- ${v.name}: ${v.status}, ETA ${v.eta}, Draft ${v.
 Berths:
 ${portState.berths.map(b => `- ${b.name}: ${b.status}, Depth ${b.depth_meters}m, Utilization ${b.utilization}%`).join('\n')}
 
-Weather: Wind ${portState.weather.wind_speed_kmh}km/h, Visibility ${portState.weather.visibility_km}km, Fog probability ${(portState.weather.fog_probability * 100).toFixed(0)}%
+Weather: Wind ${portState.weather.wind_speed_kmh}km/h, Visibility ${portState.weather.visibility_km}km
 
 Tides:
-${portState.tides.slice(0, 3).map(t => `- ${t.type} tide at ${t.timestamp}, Height ${t.height_m}m`).join('\n')}
+${portState.tides.slice(0, 3).map(t => `- ${t.type} tide at ${t.timestamp}, Height ${t.height_m}m`).join('\n')}`;
 
-Current alerts: ${portState.alerts.length}`;
-
-      const response = await this.callGroq(
-        AGENT_MODELS.predictive_resilience,
-        PROMPTS.predictive_resilience,
-        context,
-        0.2,
-        1024
-      );
+      const response = await this.callGroq('predictive_resilience', context);
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        throw new Error('Failed to parse resilience analysis');
+        // Return a basic response if JSON parsing fails
+        return {
+          success: true,
+          data: {
+            risk_alerts: [],
+            resilience_score: 0.7,
+            explanation: response,
+          },
+          latency_ms: Date.now() - startTime,
+        };
       }
 
       const result = JSON.parse(jsonMatch[0]);
@@ -418,13 +485,7 @@ ${optimizations.length > 0 ? `- Average improvement: ${(optimizations.reduce((a,
 
 Current resilience score: ${portState.resilience_score.toFixed(2)}`;
 
-      const response = await this.callGroq(
-        AGENT_MODELS.report_synthesis,
-        PROMPTS.report_synthesis,
-        context,
-        0.4,
-        2048
-      );
+      const response = await this.callGroq('report_synthesis', context);
 
       return {
         success: true,
@@ -456,57 +517,21 @@ Current resilience score: ${portState.resilience_score.toFixed(2)}`;
     const startTime = Date.now();
     
     try {
-      const systemPrompt = `You are Qradha AI, an intelligent assistant for Hamburg Port operations. You help operators:
-- Understand and handle disruptions
-- Interpret optimization results
-- Monitor port resilience
-- Generate reports and insights
-
-Current port state:
+      const context = `Port state:
 - ${portState.vessels.length} vessels (${portState.vessels.filter(v => v.status === 'approaching').length} approaching)
 - ${portState.berths.filter(b => b.status === 'available').length}/${portState.berths.length} berths available
 - ${portState.trains.length} trains in system
 - Resilience score: ${(portState.resilience_score * 100).toFixed(0)}%
 - Active alerts: ${portState.alerts.length}
 
-Be concise, professional, and actionable in your responses. Use markdown formatting.`;
+Chat history:
+${history.slice(-4).map(h => `${h.role}: ${h.content}`).join('\n')}`;
 
-      const apiKey = this.getApiKey();
-      if (!apiKey) {
-        throw new Error('Groq API key not configured');
-      }
-
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        ...history.slice(-6), // Keep last 6 messages for context
-        { role: 'user', content: message },
-      ];
-
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: AGENT_MODELS.disruption_parser,
-          messages,
-          temperature: 0.4,
-          max_tokens: 1024,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content || '';
+      const response = await this.callGroq('chat', message, context);
 
       return {
         success: true,
-        data: { response: content },
+        data: { response },
         latency_ms: Date.now() - startTime,
       };
     } catch (error) {
