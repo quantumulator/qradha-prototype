@@ -1,26 +1,115 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --navy: #0A1929;
+  --navy-light: #1e3a5f;
+  --accent-orange: #FF6B35;
+  --accent-cyan: #00D9FF;
+  --accent-red: #FF2E63;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background-color: var(--navy);
+  color: #ffffff;
+  overflow: hidden;
+}
+
+/* MapLibre overrides */
+.maplibregl-map {
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.maplibregl-popup-content {
+  background: rgba(10, 25, 41, 0.95);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 8px;
+  color: white;
+  padding: 12px;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: rgba(10, 25, 41, 0.95);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--navy);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--navy-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--accent-cyan), 0 0 10px var(--accent-cyan);
+  }
+  50% {
+    box-shadow: 0 0 20px var(--accent-cyan), 0 0 30px var(--accent-cyan);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes vessel-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+.vessel-marker {
+  animation: vessel-pulse 2s ease-in-out infinite;
+}
+
+.glow-cyan {
+  box-shadow: 0 0 10px var(--accent-cyan), 0 0 20px var(--accent-cyan);
+}
+
+.glow-orange {
+  box-shadow: 0 0 10px var(--accent-orange), 0 0 20px var(--accent-orange);
+}
+
+.glow-red {
+  box-shadow: 0 0 10px var(--accent-red), 0 0 20px var(--accent-red);
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(10, 25, 41, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 217, 255, 0.2);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-orange));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

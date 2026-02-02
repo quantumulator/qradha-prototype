@@ -1,0 +1,278 @@
+import type { PortState, Vessel, Berth, Crane, WeatherData, TideData, RiskAlert, Metrics } from './types';
+
+// Hamburg Port coordinates
+const HAMBURG_CENTER = { lat: 53.5411, lon: 9.9937 };
+
+// Mock Vessels
+export const mockVessels: Vessel[] = [
+  {
+    id: 'MSC_MIA_IMO9876543',
+    name: 'MSC Mia',
+    imo: '9876543',
+    eta: '2026-02-02T14:30:00Z',
+    etd: '2026-02-03T02:30:00Z',
+    berth_assignment: 'berth_1',
+    draft_meters: 14.5,
+    cargo_teu: 8500,
+    status: 'approaching',
+    position: { lat: 53.89, lon: 8.71 },
+    speed: 12.5,
+    heading: 95,
+  },
+  {
+    id: 'EVER_ACE_IMO9893890',
+    name: 'Ever Ace',
+    imo: '9893890',
+    eta: '2026-02-02T18:00:00Z',
+    berth_assignment: 'berth_3',
+    draft_meters: 16.5,
+    cargo_teu: 23992,
+    status: 'approaching',
+    position: { lat: 53.95, lon: 8.45 },
+    speed: 10.2,
+    heading: 110,
+  },
+  {
+    id: 'CMA_CGM_VELA_IMO9454395',
+    name: 'CMA CGM Vela',
+    imo: '9454395',
+    eta: '2026-02-02T16:45:00Z',
+    berth_assignment: 'berth_2',
+    draft_meters: 15.2,
+    cargo_teu: 11388,
+    status: 'approaching',
+    position: { lat: 53.87, lon: 8.95 },
+    speed: 8.7,
+    heading: 88,
+  },
+  {
+    id: 'MAERSK_ESSEX_IMO9778791',
+    name: 'Maersk Essex',
+    imo: '9778791',
+    eta: '2026-02-02T17:45:00Z',
+    berth_assignment: 'berth_4',
+    draft_meters: 14.8,
+    cargo_teu: 15226,
+    status: 'approaching',
+    position: { lat: 53.92, lon: 8.62 },
+    speed: 11.3,
+    heading: 102,
+  },
+  {
+    id: 'HMM_ALGECIRAS_IMO9863297',
+    name: 'HMM Algeciras',
+    imo: '9863297',
+    eta: '2026-02-02T20:00:00Z',
+    berth_assignment: 'berth_5',
+    draft_meters: 16.0,
+    cargo_teu: 23964,
+    status: 'waiting',
+    position: { lat: 53.88, lon: 8.52 },
+    speed: 5.2,
+    heading: 0,
+  },
+  {
+    id: 'HAPAG_LLOYD_BERLIN_IMO9782450',
+    name: 'Berlin Express',
+    imo: '9782450',
+    eta: '2026-02-02T12:00:00Z',
+    berth_assignment: 'berth_6',
+    draft_meters: 13.5,
+    cargo_teu: 7500,
+    status: 'berthed',
+    position: { lat: 53.5355, lon: 9.9345 },
+    speed: 0,
+    heading: 270,
+  },
+];
+
+// Mock Berths
+export const mockBerths: Berth[] = [
+  {
+    id: 'berth_1',
+    name: 'Berth 1 - CTB',
+    terminal: 'Container Terminal Burchardkai',
+    status: 'available',
+    depth_meters: 15.5,
+    length_meters: 400,
+    cranes: ['QC1', 'QC2'],
+    position: { lat: 53.5380, lon: 9.9280 },
+    utilization: 45,
+  },
+  {
+    id: 'berth_2',
+    name: 'Berth 2 - CTB',
+    terminal: 'Container Terminal Burchardkai',
+    status: 'available',
+    depth_meters: 16.0,
+    length_meters: 420,
+    cranes: ['QC3', 'QC4'],
+    position: { lat: 53.5365, lon: 9.9320 },
+    utilization: 72,
+  },
+  {
+    id: 'berth_3',
+    name: 'Berth 3 - CTB Deep Water',
+    terminal: 'Container Terminal Burchardkai',
+    status: 'available',
+    depth_meters: 17.5,
+    length_meters: 450,
+    cranes: ['QC5', 'QC6'],
+    position: { lat: 53.5350, lon: 9.9360 },
+    utilization: 28,
+  },
+  {
+    id: 'berth_4',
+    name: 'Berth 4 - CTA',
+    terminal: 'Container Terminal Altenwerder',
+    status: 'available',
+    depth_meters: 16.7,
+    length_meters: 400,
+    cranes: ['QC7', 'QC8'],
+    position: { lat: 53.5040, lon: 9.9350 },
+    utilization: 55,
+  },
+  {
+    id: 'berth_5',
+    name: 'Berth 5 - CTA',
+    terminal: 'Container Terminal Altenwerder',
+    status: 'available',
+    depth_meters: 17.0,
+    length_meters: 430,
+    cranes: ['QC9', 'QC10'],
+    position: { lat: 53.5025, lon: 9.9390 },
+    utilization: 38,
+  },
+  {
+    id: 'berth_6',
+    name: 'Berth 6 - CTT',
+    terminal: 'Container Terminal Tollerort',
+    status: 'occupied',
+    depth_meters: 14.5,
+    length_meters: 350,
+    cranes: ['QC11', 'QC12'],
+    position: { lat: 53.5355, lon: 9.9345 },
+    utilization: 88,
+    current_vessel: 'HAPAG_LLOYD_BERLIN_IMO9782450',
+  },
+];
+
+// Mock Cranes
+export const mockCranes: Crane[] = [
+  { id: 'QC1', type: 'STS', status: 'active', berth_id: 'berth_1', moves_per_hour: 35, energy_consumption_kwh: 120 },
+  { id: 'QC2', type: 'STS', status: 'active', berth_id: 'berth_1', moves_per_hour: 38, energy_consumption_kwh: 125 },
+  { id: 'QC3', type: 'STS', status: 'idle', berth_id: 'berth_2', moves_per_hour: 36, energy_consumption_kwh: 118 },
+  { id: 'QC4', type: 'STS', status: 'maintenance', berth_id: 'berth_2', moves_per_hour: 0, energy_consumption_kwh: 0 },
+  { id: 'QC5', type: 'STS', status: 'idle', berth_id: 'berth_3', moves_per_hour: 40, energy_consumption_kwh: 130 },
+  { id: 'QC6', type: 'STS', status: 'idle', berth_id: 'berth_3', moves_per_hour: 40, energy_consumption_kwh: 130 },
+  { id: 'QC7', type: 'STS', status: 'active', berth_id: 'berth_4', moves_per_hour: 42, energy_consumption_kwh: 135 },
+  { id: 'QC8', type: 'STS', status: 'active', berth_id: 'berth_4', moves_per_hour: 42, energy_consumption_kwh: 135 },
+  { id: 'QC9', type: 'STS', status: 'idle', berth_id: 'berth_5', moves_per_hour: 38, energy_consumption_kwh: 122 },
+  { id: 'QC10', type: 'STS', status: 'idle', berth_id: 'berth_5', moves_per_hour: 38, energy_consumption_kwh: 122 },
+  { id: 'QC11', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 32, energy_consumption_kwh: 110 },
+  { id: 'QC12', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 34, energy_consumption_kwh: 115 },
+];
+
+// Mock Weather
+export const mockWeather: WeatherData = {
+  timestamp: new Date().toISOString(),
+  wind_speed_kmh: 25,
+  wind_direction: 285,
+  wave_height_m: 1.2,
+  visibility_km: 8.5,
+  fog_probability: 0.15,
+  precipitation_mm: 0,
+};
+
+// Mock Tides
+export const mockTides: TideData[] = [
+  {
+    timestamp: '2026-02-02T06:00:00Z',
+    type: 'high',
+    height_m: 3.8,
+    window_open: '2026-02-02T05:00:00Z',
+    window_close: '2026-02-02T07:00:00Z',
+  },
+  {
+    timestamp: '2026-02-02T12:15:00Z',
+    type: 'low',
+    height_m: 0.4,
+  },
+  {
+    timestamp: '2026-02-02T18:30:00Z',
+    type: 'high',
+    height_m: 3.9,
+    window_open: '2026-02-02T17:30:00Z',
+    window_close: '2026-02-02T19:30:00Z',
+  },
+  {
+    timestamp: '2026-02-03T00:45:00Z',
+    type: 'low',
+    height_m: 0.3,
+  },
+  {
+    timestamp: '2026-02-03T06:30:00Z',
+    type: 'high',
+    height_m: 3.7,
+    window_open: '2026-02-03T05:30:00Z',
+    window_close: '2026-02-03T07:30:00Z',
+  },
+];
+
+// Mock Risk Alerts
+export const mockAlerts: RiskAlert[] = [
+  {
+    id: 'alert_1',
+    type: 'tidal_risk',
+    severity: 'high',
+    vessel: 'MAERSK_ESSEX',
+    message: 'Maersk Essex ETA 17:45 - only 15 min margin to tidal window close at 18:00',
+    recommendation: 'Delay berth assignment by 12 hours to next tide (06:00) to avoid rushed operations.',
+    probability: 0.68,
+    timestamp: new Date().toISOString(),
+  },
+  {
+    id: 'alert_2',
+    type: 'rail_saturation',
+    severity: 'medium',
+    message: 'Rail capacity exceeded: 14 trains scheduled vs 12 capacity (19:00-22:00)',
+    recommendation: 'Redistribute 140 TEU to truck gate or delay 2 trains to post-22:00 off-peak.',
+    probability: 0.85,
+    timestamp: new Date().toISOString(),
+  },
+  {
+    id: 'alert_3',
+    type: 'equipment_risk',
+    severity: 'low',
+    message: 'QC4 crane scheduled for maintenance tonight - may affect Berth 2 operations',
+    recommendation: 'Pre-assign QC3 as backup for Berth 2 operations.',
+    probability: 0.35,
+    timestamp: new Date().toISOString(),
+  },
+];
+
+// Mock Port State
+export const mockPortState: PortState = {
+  vessels: mockVessels,
+  berths: mockBerths,
+  cranes: mockCranes,
+  weather: mockWeather,
+  tides: mockTides,
+  alerts: mockAlerts,
+  resilience_score: 0.62,
+  timestamp: new Date().toISOString(),
+};
+
+// Mock Metrics
+export const mockMetrics: Metrics = {
+  throughput_teu: 38450,
+  throughput_change: 9.2,
+  energy_kwh: 89660,
+  energy_change: -13.8,
+  rail_share_percent: 52.3,
+  rail_target_percent: 50,
+  co2_saved_tons: 18.7,
+  avg_turnaround_hours: 22.1,
+  turnaround_change: -10.9,
+  delays_hours: 4.2,
+};
