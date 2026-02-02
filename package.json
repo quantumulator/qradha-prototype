@@ -1,8 +1,17 @@
 {
-  "name": "qradha",
+  "name": "@quantumulator/qradha",
   "version": "0.1.0",
   "description": "Quantum Resilient Adaptive Dynamic Hamburg Engine - Real-time port optimization platform",
-  "private": true,
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quantumulator/qradha-prototype.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "author": "Quantumulator",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
