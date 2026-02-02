@@ -1,37 +1,61 @@
 'use client';
 
-import { useRef, useMemo, useState, useEffect } from 'react';
+import { useRef, useMemo, useState, useEffect, Component, ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Float, MeshDistortMaterial } from '@react-three/drei';
+import { OrbitControls, Text, Float, Box } from '@react-three/drei';
 import * as THREE from 'three';
 import { useQradhaStore } from '@/lib/store';
+
+// Error Boundary for 3D components
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class ThreeErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode; fallback: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('3D Visualization Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 
 // Energy Landscape Surface
 function EnergyLandscape() {
   const meshRef = useRef<THREE.Mesh>(null);
-  const { isOptimizing, lastOptimization } = useQradhaStore();
+  const { isOptimizing } = useQradhaStore();
   
   const geometry = useMemo(() => {
     const geo = new THREE.PlaneGeometry(10, 10, 50, 50);
     const positions = geo.attributes.position.array as Float32Array;
     
-    // Create energy landscape with valleys and peaks
     for (let i = 0; i < positions.length; i += 3) {
       const x = positions[i];
       const y = positions[i + 1];
       
-      // Multiple sine waves for complex landscape
       let z = Math.sin(x * 0.8) * Math.cos(y * 0.8) * 0.5;
       z += Math.sin(x * 1.5 + 1) * Math.cos(y * 1.5 + 1) * 0.3;
       z += Math.sin(x * 2.5) * Math.cos(y * 2.5) * 0.15;
       
-      // Add some peaks (constraint violations)
       const dist1 = Math.sqrt((x - 2) ** 2 + (y - 2) ** 2);
       const dist2 = Math.sqrt((x + 2) ** 2 + (y - 2) ** 2);
       z += Math.exp(-dist1 * 0.8) * 1.5;
       z += Math.exp(-dist2 * 0.8) * 1.2;
       
-      // Deep valley (optimal solution)
       const distOptimal = Math.sqrt((x + 1) ** 2 + (y + 1) ** 2);
       z -= Math.exp(-distOptimal * 0.5) * 0.8;
       
@@ -50,7 +74,7 @@ function EnergyLandscape() {
 
   return (
     <mesh ref={meshRef} rotation={[-Math.PI / 2.5, 0, 0]} position={[0, -1, 0]}>
-      <primitive object={geometry} />
+      <primitive object={geometry} attach="geometry" />
       <meshStandardMaterial
         color="#00D9FF"
         wireframe
@@ -64,13 +88,8 @@ function EnergyLandscape() {
 // Quantum particle representing current solution
 function QuantumParticle() {
   const particleRef = useRef<THREE.Mesh>(null);
-  const trailRef = useRef<THREE.Points>(null);
   const { isOptimizing } = useQradhaStore();
   const [position, setPosition] = useState({ x: 2, y: 2, z: 1 });
-  
-  // Trail positions
-  const trailPositions = useMemo(() => new Float32Array(300), []);
-  const trailIndex = useRef(0);
 
   useFrame(({ clock }) => {
     if (!particleRef.current) return;
@@ -78,71 +97,40 @@ function QuantumParticle() {
     const t = clock.elapsedTime;
     
     if (isOptimizing) {
-      // Quantum tunneling animation - move towards optimal
       const targetX = -1;
       const targetY = -1;
       
       const newX = position.x + (targetX - position.x) * 0.02 + Math.sin(t * 3) * 0.1;
       const newY = position.y + (targetY - position.y) * 0.02 + Math.cos(t * 3) * 0.1;
       
-      // Calculate z based on landscape
       let newZ = Math.sin(newX * 0.8) * Math.cos(newY * 0.8) * 0.5;
       newZ += Math.sin(newX * 1.5 + 1) * Math.cos(newY * 1.5 + 1) * 0.3;
-      newZ += 0.5; // Hover above surface
+      newZ += 0.5;
       
       setPosition({ x: newX, y: newY, z: newZ });
       
       particleRef.current.position.x = newX;
       particleRef.current.position.y = newZ;
       particleRef.current.position.z = newY;
-      
-      // Update trail
-      if (trailRef.current) {
-        const idx = (trailIndex.current % 100) * 3;
-        trailPositions[idx] = newX;
-        trailPositions[idx + 1] = newZ;
-        trailPositions[idx + 2] = newY;
-        trailIndex.current++;
-        trailRef.current.geometry.attributes.position.needsUpdate = true;
-      }
     } else {
-      // Idle oscillation
       particleRef.current.position.y = position.z + Math.sin(t * 2) * 0.1;
     }
     
-    // Pulse effect
     const scale = 1 + Math.sin(t * 5) * 0.1;
     particleRef.current.scale.setScalar(scale);
   });
 
   return (
-    <group>
-      <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-        <mesh ref={particleRef} position={[position.x, position.z + 0.5, position.y]}>
-          <sphereGeometry args={[0.15, 32, 32]} />
-          <MeshDistortMaterial
-            color="#FF6B35"
-            emissive="#FF6B35"
-            emissiveIntensity={0.5}
-            distort={0.3}
-            speed={4}
-          />
-        </mesh>
-      </Float>
-      
-      {/* Trail */}
-      <points ref={trailRef}>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            count={100}
-            array={trailPositions}
-            itemSize={3}
-          />
-        </bufferGeometry>
-        <pointsMaterial color="#FF6B35" size={0.05} transparent opacity={0.5} />
-      </points>
-    </group>
+    <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
+      <mesh ref={particleRef} position={[position.x, position.z + 0.5, position.y]}>
+        <sphereGeometry args={[0.15, 32, 32]} />
+        <meshStandardMaterial
+          color="#FF6B35"
+          emissive="#FF6B35"
+          emissiveIntensity={0.5}
+        />
+      </mesh>
+    </Float>
   );
 }
 
@@ -151,7 +139,7 @@ function ContainerYard() {
   const { portState } = useQradhaStore();
   
   const containers = useMemo(() => {
-    const result = [];
+    const result: { position: [number, number, number]; height: number; color: string }[] = [];
     const gridSize = 8;
     const berths = portState.berths;
     
@@ -163,7 +151,7 @@ function ContainerYard() {
         
         if (isOccupied) {
           result.push({
-            position: [x - gridSize / 2, 0, z - gridSize / 2] as [number, number, number],
+            position: [x - gridSize / 2, 0, z - gridSize / 2],
             height: 0.2 + Math.random() * 0.4,
             color: getContainerColor(),
           });
@@ -183,22 +171,23 @@ function ContainerYard() {
       
       {/* Containers */}
       {containers.map((container, i) => (
-        <mesh key={i} position={[container.position[0] * 0.6, container.height / 2, container.position[2] * 0.6]}>
-          <boxGeometry args={[0.4, container.height, 0.2]} />
+        <Box 
+          key={i} 
+          args={[0.4, container.height, 0.2]}
+          position={[container.position[0] * 0.6, container.height / 2, container.position[2] * 0.6]}
+        >
           <meshStandardMaterial color={container.color} />
-        </mesh>
+        </Box>
       ))}
       
       {/* Crane */}
       <group position={[0, 0, 4]}>
-        <mesh position={[0, 1.5, 0]}>
-          <boxGeometry args={[0.1, 3, 0.1]} />
+        <Box args={[0.1, 3, 0.1]} position={[0, 1.5, 0]}>
           <meshStandardMaterial color="#FF6B35" />
-        </mesh>
-        <mesh position={[0, 3, 0]}>
-          <boxGeometry args={[4, 0.1, 0.1]} />
+        </Box>
+        <Box args={[4, 0.1, 0.1]} position={[0, 3, 0]}>
           <meshStandardMaterial color="#FF6B35" />
-        </mesh>
+        </Box>
       </group>
     </group>
   );
@@ -209,7 +198,7 @@ function getContainerColor(): string {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
-// Labels
+// Labels using Text component
 function Labels() {
   return (
     <group>
@@ -225,7 +214,7 @@ function Labels() {
       <Text
         position={[-4, 1, 0]}
         fontSize={0.15}
-        color="#888"
+        color="#888888"
         anchorX="center"
       >
         Berth Allocation →
@@ -233,7 +222,7 @@ function Labels() {
       <Text
         position={[0, 1, 4]}
         fontSize={0.15}
-        color="#888"
+        color="#888888"
         anchorX="center"
         rotation={[0, -Math.PI / 2, 0]}
       >
@@ -243,77 +232,169 @@ function Labels() {
   );
 }
 
+// Scene content
+function SceneContent({ viewMode }: { viewMode: 'landscape' | 'yard' }) {
+  return (
+    <>
+      <color attach="background" args={['#0A1929']} />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[10, 10, 5]} intensity={1} />
+      <pointLight position={[-10, 10, -5]} intensity={0.5} color="#00D9FF" />
+      
+      {viewMode === 'landscape' ? (
+        <>
+          <EnergyLandscape />
+          <QuantumParticle />
+          <Labels />
+        </>
+      ) : (
+        <ContainerYard />
+      )}
+      
+      <OrbitControls 
+        enablePan={true} 
+        enableZoom={true} 
+        enableRotate={true}
+        minDistance={5}
+        maxDistance={20}
+      />
+      
+      <gridHelper args={[20, 20, '#1e3a5f', '#1e3a5f']} position={[0, -2.5, 0]} />
+    </>
+  );
+}
+
+// Error fallback UI
+function ErrorFallback({ error, onRetry }: { error?: string; onRetry: () => void }) {
+  return (
+    <div className="w-full h-full bg-navy-400 flex items-center justify-center">
+      <div className="text-center p-8">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-white mb-2">3D Visualization Error</h3>
+        <p className="text-gray-400 text-sm mb-4 max-w-xs mx-auto">
+          {error || 'Unable to render the 3D visualization. Your browser may not support WebGL.'}
+        </p>
+        <button
+          onClick={onRetry}
+          className="px-4 py-2 bg-accent-cyan text-navy rounded-lg hover:bg-accent-cyan/80 transition-colors"
+        >
+          Try Again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function QuantumVisualization() {
   const { isOptimizing, lastOptimization } = useQradhaStore();
   const [viewMode, setViewMode] = useState<'landscape' | 'yard'>('landscape');
+  const [hasError, setHasError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [key, setKey] = useState(0);
+
+  // Check WebGL support
+  useEffect(() => {
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (!gl) {
+        setHasError(true);
+      }
+    } catch (e) {
+      setHasError(true);
+    }
+  }, []);
+
+  const handleRetry = () => {
+    setHasError(false);
+    setKey(prev => prev + 1);
+  };
+
+  if (hasError) {
+    return <ErrorFallback onRetry={handleRetry} />;
+  }
 
   return (
     <div className="relative w-full h-full">
-      <Canvas camera={{ position: [8, 6, 8], fov: 50 }}>
-        <color attach="background" args={['#0A1929']} />
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
-        <pointLight position={[-10, 10, -5]} intensity={0.5} color="#00D9FF" />
-        
-        {viewMode === 'landscape' ? (
-          <>
-            <EnergyLandscape />
-            <QuantumParticle />
-            <Labels />
-          </>
-        ) : (
-          <ContainerYard />
-        )}
-        
-        <OrbitControls 
-          enablePan={true} 
-          enableZoom={true} 
-          enableRotate={true}
-          minDistance={5}
-          maxDistance={20}
-        />
-        
-        {/* Grid helper */}
-        <gridHelper args={[20, 20, '#1e3a5f', '#1e3a5f']} position={[0, -2.5, 0]} />
-      </Canvas>
+      <ThreeErrorBoundary fallback={<ErrorFallback onRetry={handleRetry} />}>
+        <Canvas 
+          key={key}
+          camera={{ position: [8, 6, 8], fov: 50 }}
+          onCreated={() => setIsLoaded(true)}
+          gl={{ 
+            antialias: true,
+            alpha: false,
+            powerPreference: 'high-performance',
+            failIfMajorPerformanceCaveat: false
+          }}
+        >
+          <SceneContent viewMode={viewMode} />
+        </Canvas>
+      </ThreeErrorBoundary>
+      
+      {/* Loading overlay */}
+      {!isLoaded && !hasError && (
+        <div className="absolute inset-0 bg-navy-400 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-400">Loading 3D visualization...</p>
+          </div>
+        </div>
+      )}
       
       {/* Controls overlay */}
       <div className="absolute top-4 left-4 flex gap-2">
         <button
           onClick={() => setViewMode('landscape')}
-          className={`px-3 py-1 rounded text-sm transition-colors ${
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
             viewMode === 'landscape' 
-              ? 'bg-accent-cyan text-navy' 
-              : 'bg-navy-300 hover:bg-navy-200'
+              ? 'bg-accent-cyan text-navy shadow-lg shadow-accent-cyan/30' 
+              : 'bg-navy-300/80 hover:bg-navy-200 backdrop-blur-sm'
           }`}
         >
-          Energy Landscape
+          ⚡ Energy Landscape
         </button>
         <button
           onClick={() => setViewMode('yard')}
-          className={`px-3 py-1 rounded text-sm transition-colors ${
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
             viewMode === 'yard' 
-              ? 'bg-accent-cyan text-navy' 
-              : 'bg-navy-300 hover:bg-navy-200'
+              ? 'bg-accent-cyan text-navy shadow-lg shadow-accent-cyan/30' 
+              : 'bg-navy-300/80 hover:bg-navy-200 backdrop-blur-sm'
           }`}
         >
-          Container Yard
+          📦 Container Yard
         </button>
+      </div>
+      
+      {/* Help tooltip */}
+      <div className="absolute top-4 right-4 glass rounded-lg px-3 py-2 text-xs text-gray-400">
+        <div className="flex items-center gap-2">
+          <span>🖱️ Drag to rotate</span>
+          <span>•</span>
+          <span>Scroll to zoom</span>
+        </div>
       </div>
       
       {/* Status indicator */}
       {isOptimizing && (
-        <div className="absolute bottom-4 left-4 glass rounded-lg px-4 py-2 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-accent-orange animate-pulse" />
-          <span className="text-sm">Quantum tunneling in progress...</span>
+        <div className="absolute bottom-4 left-4 glass rounded-lg px-4 py-3 flex items-center gap-3">
+          <div className="relative">
+            <div className="w-3 h-3 rounded-full bg-accent-orange animate-ping absolute" />
+            <div className="w-3 h-3 rounded-full bg-accent-orange" />
+          </div>
+          <span className="text-sm font-medium">Quantum tunneling in progress...</span>
         </div>
       )}
       
       {lastOptimization && !isOptimizing && (
-        <div className="absolute bottom-4 left-4 glass rounded-lg px-4 py-2 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-500" />
+        <div className="absolute bottom-4 left-4 glass rounded-lg px-4 py-3 flex items-center gap-3">
+          <div className="w-3 h-3 rounded-full bg-green-500" />
           <span className="text-sm">
-            Optimal solution found: {lastOptimization.improvement_percent.toFixed(1)}% improvement
+            ✓ Optimal solution found: <span className="font-semibold text-green-400">{lastOptimization.improvement_percent.toFixed(1)}% improvement</span>
           </span>
         </div>
       )}

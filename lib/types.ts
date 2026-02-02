@@ -44,6 +44,27 @@ export interface Crane {
   berth_id: string;
   moves_per_hour: number;
   energy_consumption_kwh: number;
+  position?: {
+    lat: number;
+    lon: number;
+  };
+}
+
+// Train Types
+export interface Train {
+  id: string;
+  name: string;
+  operator: string;
+  status: 'loading' | 'waiting' | 'departing' | 'approaching';
+  scheduled_departure: string;
+  scheduled_arrival?: string;
+  containers_teu: number;
+  destination: string;
+  track: string;
+  position: {
+    lat: number;
+    lon: number;
+  };
 }
 
 // Disruption Types
@@ -119,6 +140,7 @@ export interface PortState {
   vessels: Vessel[];
   berths: Berth[];
   cranes: Crane[];
+  trains: Train[];
   weather: WeatherData;
   tides: TideData[];
   alerts: RiskAlert[];

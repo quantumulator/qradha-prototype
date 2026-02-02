@@ -1,4 +1,4 @@
-import type { PortState, Vessel, Berth, Crane, WeatherData, TideData, RiskAlert, Metrics } from './types';
+import type { PortState, Vessel, Berth, Crane, Train, WeatherData, TideData, RiskAlert, Metrics } from './types';
 
 // Hamburg Port coordinates
 const HAMBURG_CENTER = { lat: 53.5411, lon: 9.9937 };
@@ -159,18 +159,67 @@ export const mockBerths: Berth[] = [
 
 // Mock Cranes
 export const mockCranes: Crane[] = [
-  { id: 'QC1', type: 'STS', status: 'active', berth_id: 'berth_1', moves_per_hour: 35, energy_consumption_kwh: 120 },
-  { id: 'QC2', type: 'STS', status: 'active', berth_id: 'berth_1', moves_per_hour: 38, energy_consumption_kwh: 125 },
-  { id: 'QC3', type: 'STS', status: 'idle', berth_id: 'berth_2', moves_per_hour: 36, energy_consumption_kwh: 118 },
-  { id: 'QC4', type: 'STS', status: 'maintenance', berth_id: 'berth_2', moves_per_hour: 0, energy_consumption_kwh: 0 },
-  { id: 'QC5', type: 'STS', status: 'idle', berth_id: 'berth_3', moves_per_hour: 40, energy_consumption_kwh: 130 },
-  { id: 'QC6', type: 'STS', status: 'idle', berth_id: 'berth_3', moves_per_hour: 40, energy_consumption_kwh: 130 },
-  { id: 'QC7', type: 'STS', status: 'active', berth_id: 'berth_4', moves_per_hour: 42, energy_consumption_kwh: 135 },
-  { id: 'QC8', type: 'STS', status: 'active', berth_id: 'berth_4', moves_per_hour: 42, energy_consumption_kwh: 135 },
-  { id: 'QC9', type: 'STS', status: 'idle', berth_id: 'berth_5', moves_per_hour: 38, energy_consumption_kwh: 122 },
-  { id: 'QC10', type: 'STS', status: 'idle', berth_id: 'berth_5', moves_per_hour: 38, energy_consumption_kwh: 122 },
-  { id: 'QC11', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 32, energy_consumption_kwh: 110 },
-  { id: 'QC12', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 34, energy_consumption_kwh: 115 },
+  { id: 'QC1', type: 'STS', status: 'active', berth_id: 'berth_1', moves_per_hour: 35, energy_consumption_kwh: 120, position: { lat: 53.5382, lon: 9.9282 } },
+  { id: 'QC2', type: 'STS', status: 'active', berth_id: 'berth_1', moves_per_hour: 38, energy_consumption_kwh: 125, position: { lat: 53.5378, lon: 9.9278 } },
+  { id: 'QC3', type: 'STS', status: 'idle', berth_id: 'berth_2', moves_per_hour: 36, energy_consumption_kwh: 118, position: { lat: 53.5367, lon: 9.9322 } },
+  { id: 'QC4', type: 'STS', status: 'maintenance', berth_id: 'berth_2', moves_per_hour: 0, energy_consumption_kwh: 0, position: { lat: 53.5363, lon: 9.9318 } },
+  { id: 'QC5', type: 'STS', status: 'idle', berth_id: 'berth_3', moves_per_hour: 40, energy_consumption_kwh: 130, position: { lat: 53.5352, lon: 9.9362 } },
+  { id: 'QC6', type: 'STS', status: 'idle', berth_id: 'berth_3', moves_per_hour: 40, energy_consumption_kwh: 130, position: { lat: 53.5348, lon: 9.9358 } },
+  { id: 'QC7', type: 'STS', status: 'active', berth_id: 'berth_4', moves_per_hour: 42, energy_consumption_kwh: 135, position: { lat: 53.5042, lon: 9.9352 } },
+  { id: 'QC8', type: 'STS', status: 'active', berth_id: 'berth_4', moves_per_hour: 42, energy_consumption_kwh: 135, position: { lat: 53.5038, lon: 9.9348 } },
+  { id: 'QC9', type: 'STS', status: 'idle', berth_id: 'berth_5', moves_per_hour: 38, energy_consumption_kwh: 122, position: { lat: 53.5027, lon: 9.9392 } },
+  { id: 'QC10', type: 'STS', status: 'idle', berth_id: 'berth_5', moves_per_hour: 38, energy_consumption_kwh: 122, position: { lat: 53.5023, lon: 9.9388 } },
+  { id: 'QC11', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 32, energy_consumption_kwh: 110, position: { lat: 53.5357, lon: 9.9347 } },
+  { id: 'QC12', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 34, energy_consumption_kwh: 115, position: { lat: 53.5353, lon: 9.9343 } },
+];
+
+// Mock Trains
+export const mockTrains: Train[] = [
+  {
+    id: 'train_1',
+    name: 'DB Cargo 142',
+    operator: 'DB Cargo',
+    status: 'loading',
+    scheduled_departure: '2026-02-02T16:30:00Z',
+    containers_teu: 82,
+    destination: 'Munich Rail Terminal',
+    track: 'Track 3',
+    position: { lat: 53.5320, lon: 9.9420 },
+  },
+  {
+    id: 'train_2',
+    name: 'Metrans Express',
+    operator: 'Metrans',
+    status: 'waiting',
+    scheduled_departure: '2026-02-02T18:00:00Z',
+    containers_teu: 96,
+    destination: 'Prague Terminal',
+    track: 'Track 5',
+    position: { lat: 53.5310, lon: 9.9450 },
+  },
+  {
+    id: 'train_3',
+    name: 'TX Logistik 88',
+    operator: 'TX Logistik',
+    status: 'approaching',
+    scheduled_arrival: '2026-02-02T15:45:00Z',
+    scheduled_departure: '2026-02-02T20:00:00Z',
+    containers_teu: 74,
+    destination: 'Vienna South',
+    track: 'Track 1',
+    position: { lat: 53.5280, lon: 9.9380 },
+  },
+  {
+    id: 'train_4',
+    name: 'Kombiverkehr 201',
+    operator: 'Kombiverkehr',
+    status: 'departing',
+    scheduled_departure: '2026-02-02T14:00:00Z',
+    containers_teu: 68,
+    destination: 'Basel Intermodal',
+    track: 'Track 2',
+    position: { lat: 53.5330, lon: 9.9400 },
+  },
 ];
 
 // Mock Weather
@@ -256,6 +305,7 @@ export const mockPortState: PortState = {
   vessels: mockVessels,
   berths: mockBerths,
   cranes: mockCranes,
+  trains: mockTrains,
   weather: mockWeather,
   tides: mockTides,
   alerts: mockAlerts,
