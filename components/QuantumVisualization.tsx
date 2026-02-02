@@ -1,403 +1,573 @@
 'use client';
 
-import { useRef, useMemo, useState, useEffect, Component, ReactNode } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Float, Box } from '@react-three/drei';
-import * as THREE from 'three';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useQradhaStore } from '@/lib/store';
+import { motion, AnimatePresence } from 'framer-motion';
+import { AlertTriangle, Cpu, Zap, Box, RotateCcw } from 'lucide-react';
 
-// Error Boundary for 3D components
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error?: Error;
-}
-
-class ThreeErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, ErrorBoundaryState> {
-  constructor(props: { children: ReactNode; fallback: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('3D Visualization Error:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
-
-// Energy Landscape Surface
-function EnergyLandscape() {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const { isOptimizing } = useQradhaStore();
+// Pure Canvas-based 3D visualization to avoid React Three Fiber issues
+export default function QuantumVisualization() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>(0);
+  const [view, setView] = useState<'energy' | 'containers' | 'network'>('energy');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const geometry = useMemo(() => {
-    const geo = new THREE.PlaneGeometry(10, 10, 50, 50);
-    const positions = geo.attributes.position.array as Float32Array;
+  const { isOptimizing, portState, optimizationProgress } = useQradhaStore();
+
+  // Energy landscape animation
+  const drawEnergyLandscape = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
+    ctx.clearRect(0, 0, width, height);
     
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      
-      let z = Math.sin(x * 0.8) * Math.cos(y * 0.8) * 0.5;
-      z += Math.sin(x * 1.5 + 1) * Math.cos(y * 1.5 + 1) * 0.3;
-      z += Math.sin(x * 2.5) * Math.cos(y * 2.5) * 0.15;
-      
-      const dist1 = Math.sqrt((x - 2) ** 2 + (y - 2) ** 2);
-      const dist2 = Math.sqrt((x + 2) ** 2 + (y - 2) ** 2);
-      z += Math.exp(-dist1 * 0.8) * 1.5;
-      z += Math.exp(-dist2 * 0.8) * 1.2;
-      
-      const distOptimal = Math.sqrt((x + 1) ** 2 + (y + 1) ** 2);
-      z -= Math.exp(-distOptimal * 0.5) * 0.8;
-      
-      positions[i + 2] = z;
+    // Dark gradient background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0, '#0a0f1a');
+    bgGrad.addColorStop(1, '#0d1424');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Grid
+    ctx.strokeStyle = 'rgba(0, 217, 255, 0.1)';
+    ctx.lineWidth = 1;
+    const gridSize = 40;
+    for (let x = 0; x < width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < height; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
     }
     
-    geo.computeVertexNormals();
-    return geo;
-  }, []);
-
-  useFrame(({ clock }) => {
-    if (meshRef.current && isOptimizing) {
-      meshRef.current.rotation.z = Math.sin(clock.elapsedTime * 0.2) * 0.05;
+    // 3D-like energy surface
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const scale = Math.min(width, height) / 3;
+    
+    // Draw concentric energy rings
+    for (let r = 5; r > 0; r--) {
+      const radius = r * scale / 4;
+      const offset = Math.sin(time * 2 + r) * 10;
+      
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY + offset, radius, radius * 0.6, 0, 0, Math.PI * 2);
+      
+      const grad = ctx.createRadialGradient(centerX, centerY + offset, 0, centerX, centerY + offset, radius);
+      grad.addColorStop(0, `rgba(0, 217, 255, ${0.1 + (5 - r) * 0.05})`);
+      grad.addColorStop(1, 'rgba(0, 217, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+      
+      ctx.strokeStyle = `rgba(0, 217, 255, ${0.3 + (5 - r) * 0.1})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
-  });
-
-  return (
-    <mesh ref={meshRef} rotation={[-Math.PI / 2.5, 0, 0]} position={[0, -1, 0]}>
-      <primitive object={geometry} attach="geometry" />
-      <meshStandardMaterial
-        color="#00D9FF"
-        wireframe
-        transparent
-        opacity={0.6}
-      />
-    </mesh>
-  );
-}
-
-// Quantum particle representing current solution
-function QuantumParticle() {
-  const particleRef = useRef<THREE.Mesh>(null);
-  const { isOptimizing } = useQradhaStore();
-  const [position, setPosition] = useState({ x: 2, y: 2, z: 1 });
-
-  useFrame(({ clock }) => {
-    if (!particleRef.current) return;
     
-    const t = clock.elapsedTime;
+    // Energy peaks (local minima visualization)
+    const peaks = [
+      { x: centerX - scale/2, y: centerY - 30, label: 'Local Min 1', value: 0.7 },
+      { x: centerX + scale/2, y: centerY + 20, label: 'Local Min 2', value: 0.6 },
+      { x: centerX, y: centerY - 50, label: 'Global Optimum', value: 0.2, optimal: true },
+    ];
     
+    peaks.forEach((peak, i) => {
+      const pulse = Math.sin(time * 3 + i) * 5;
+      const peakRadius = 20 + pulse;
+      
+      // Glow
+      const glowGrad = ctx.createRadialGradient(peak.x, peak.y, 0, peak.x, peak.y, peakRadius * 2);
+      glowGrad.addColorStop(0, peak.optimal ? 'rgba(0, 255, 136, 0.5)' : 'rgba(255, 159, 67, 0.3)');
+      glowGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(peak.x, peak.y, peakRadius * 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Core
+      ctx.beginPath();
+      ctx.arc(peak.x, peak.y, peakRadius / 2, 0, Math.PI * 2);
+      ctx.fillStyle = peak.optimal ? '#00FF88' : '#FF9F43';
+      ctx.fill();
+      
+      // Label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(peak.label, peak.x, peak.y + 35);
+      ctx.fillStyle = peak.optimal ? '#00FF88' : '#FF9F43';
+      ctx.fillText(`E = ${peak.value.toFixed(2)}`, peak.x, peak.y + 48);
+    });
+    
+    // Quantum particle (current solution state)
+    const particleAngle = time * (isOptimizing ? 2 : 0.5);
+    const particleRadius = isOptimizing ? scale/3 * (1 - optimizationProgress/100) : scale/3;
+    const particleX = centerX + Math.cos(particleAngle) * particleRadius;
+    const particleY = centerY + Math.sin(particleAngle) * particleRadius * 0.6;
+    
+    // Particle trail
+    ctx.strokeStyle = 'rgba(147, 51, 234, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let t = 0; t < Math.PI * 2; t += 0.1) {
+      const trailR = particleRadius + Math.sin(t * 3 + time) * 20;
+      const tx = centerX + Math.cos(particleAngle - t * 0.1) * trailR;
+      const ty = centerY + Math.sin(particleAngle - t * 0.1) * trailR * 0.6;
+      if (t === 0) ctx.moveTo(tx, ty);
+      else ctx.lineTo(tx, ty);
+    }
+    ctx.stroke();
+    
+    // Particle glow
+    const particleGlow = ctx.createRadialGradient(particleX, particleY, 0, particleX, particleY, 30);
+    particleGlow.addColorStop(0, 'rgba(147, 51, 234, 0.8)');
+    particleGlow.addColorStop(0.5, 'rgba(147, 51, 234, 0.3)');
+    particleGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = particleGlow;
+    ctx.beginPath();
+    ctx.arc(particleX, particleY, 30, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Particle core
+    ctx.beginPath();
+    ctx.arc(particleX, particleY, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#9333EA';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Title
+    ctx.fillStyle = '#00D9FF';
+    ctx.font = 'bold 16px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Quantum Energy Landscape', 20, 30);
+    
+    // Legend
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.fillText('Simulated Annealing + Tensor Networks', 20, 50);
+    
+    // Optimization status
     if (isOptimizing) {
-      const targetX = -1;
-      const targetY = -1;
+      ctx.fillStyle = '#00FF88';
+      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`Optimizing... ${optimizationProgress.toFixed(0)}%`, width - 20, 30);
       
-      const newX = position.x + (targetX - position.x) * 0.02 + Math.sin(t * 3) * 0.1;
-      const newY = position.y + (targetY - position.y) * 0.02 + Math.cos(t * 3) * 0.1;
-      
-      let newZ = Math.sin(newX * 0.8) * Math.cos(newY * 0.8) * 0.5;
-      newZ += Math.sin(newX * 1.5 + 1) * Math.cos(newY * 1.5 + 1) * 0.3;
-      newZ += 0.5;
-      
-      setPosition({ x: newX, y: newY, z: newZ });
-      
-      particleRef.current.position.x = newX;
-      particleRef.current.position.y = newZ;
-      particleRef.current.position.z = newY;
-    } else {
-      particleRef.current.position.y = position.z + Math.sin(t * 2) * 0.1;
+      // Progress bar
+      ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+      ctx.fillRect(width - 170, 40, 150, 8);
+      ctx.fillStyle = '#00FF88';
+      ctx.fillRect(width - 170, 40, 150 * optimizationProgress / 100, 8);
     }
-    
-    const scale = 1 + Math.sin(t * 5) * 0.1;
-    particleRef.current.scale.setScalar(scale);
-  });
+  }, [isOptimizing, optimizationProgress]);
 
-  return (
-    <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-      <mesh ref={particleRef} position={[position.x, position.z + 0.5, position.y]}>
-        <sphereGeometry args={[0.15, 32, 32]} />
-        <meshStandardMaterial
-          color="#FF6B35"
-          emissive="#FF6B35"
-          emissiveIntensity={0.5}
-        />
-      </mesh>
-    </Float>
-  );
-}
-
-// Container yard visualization
-function ContainerYard() {
-  const { portState } = useQradhaStore();
-  
-  const containers = useMemo(() => {
-    const result: { position: [number, number, number]; height: number; color: string }[] = [];
-    const gridSize = 8;
-    const berths = portState.berths;
+  // Container yard visualization
+  const drawContainerYard = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
+    ctx.clearRect(0, 0, width, height);
     
-    for (let x = 0; x < gridSize; x++) {
-      for (let z = 0; z < gridSize; z++) {
-        const berth = berths[Math.floor(Math.random() * berths.length)];
-        const utilization = berth?.utilization || 50;
-        const isOccupied = Math.random() * 100 < utilization;
+    // Background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0, '#0a0f1a');
+    bgGrad.addColorStop(1, '#0d1424');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Draw container stacks
+    const stackRows = 5;
+    const stackCols = 8;
+    const containerWidth = 50;
+    const containerHeight = 20;
+    const containerDepth = 15;
+    const startX = 60;
+    const startY = height - 80;
+    
+    const berths = portState?.berths || [];
+    
+    for (let row = 0; row < stackRows; row++) {
+      for (let col = 0; col < stackCols; col++) {
+        const stackHeight = Math.floor(Math.random() * 4) + 1;
+        const baseX = startX + col * (containerWidth + 15);
+        const baseY = startY - row * 60;
         
-        if (isOccupied) {
-          result.push({
-            position: [x - gridSize / 2, 0, z - gridSize / 2],
-            height: 0.2 + Math.random() * 0.4,
-            color: getContainerColor(),
-          });
+        // Stack each container
+        for (let h = 0; h < stackHeight; h++) {
+          const x = baseX - h * 5;
+          const y = baseY - h * containerHeight;
+          
+          // Determine color based on status
+          const colors = ['#00D9FF', '#FF6B6B', '#00FF88', '#FFD93D', '#9333EA'];
+          const color = colors[(row + col + h) % colors.length];
+          
+          // 3D container box
+          // Top face
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + containerWidth, y);
+          ctx.lineTo(x + containerWidth + containerDepth, y - containerDepth/2);
+          ctx.lineTo(x + containerDepth, y - containerDepth/2);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Front face
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.8;
+          ctx.fillRect(x, y, containerWidth, containerHeight);
+          ctx.globalAlpha = 1;
+          
+          // Right face
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.6;
+          ctx.beginPath();
+          ctx.moveTo(x + containerWidth, y);
+          ctx.lineTo(x + containerWidth + containerDepth, y - containerDepth/2);
+          ctx.lineTo(x + containerWidth + containerDepth, y + containerHeight - containerDepth/2);
+          ctx.lineTo(x + containerWidth, y + containerHeight);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          
+          // Container lines
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x, y, containerWidth, containerHeight);
         }
       }
     }
-    return result;
-  }, [portState.berths]);
+    
+    // Crane animation
+    const craneX = 200 + Math.sin(time * 0.5) * 150;
+    const craneY = 50;
+    
+    // Crane rail
+    ctx.fillStyle = '#333';
+    ctx.fillRect(30, craneY, width - 60, 8);
+    
+    // Crane structure
+    ctx.fillStyle = '#FF9F43';
+    ctx.fillRect(craneX - 5, craneY, 10, 150);
+    ctx.fillRect(craneX - 40, craneY + 150, 80, 10);
+    
+    // Crane hook
+    const hookY = craneY + 80 + Math.sin(time * 2) * 20;
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(craneX, craneY + 20);
+    ctx.lineTo(craneX, hookY);
+    ctx.stroke();
+    
+    ctx.fillStyle = '#FFD93D';
+    ctx.beginPath();
+    ctx.arc(craneX, hookY + 10, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Title
+    ctx.fillStyle = '#00D9FF';
+    ctx.font = 'bold 16px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Container Yard Operations', 20, 30);
+    
+    // Stats
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.fillText(`${berths.length} Berths | ${portState?.vessels?.length || 0} Vessels | ${portState?.cranes?.length || 0} Cranes`, 20, 50);
+  }, [portState]);
 
-  return (
-    <group position={[0, -2, 0]}>
-      {/* Ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
-        <planeGeometry args={[12, 12]} />
-        <meshStandardMaterial color="#0A1929" />
-      </mesh>
-      
-      {/* Containers */}
-      {containers.map((container, i) => (
-        <Box 
-          key={i} 
-          args={[0.4, container.height, 0.2]}
-          position={[container.position[0] * 0.6, container.height / 2, container.position[2] * 0.6]}
-        >
-          <meshStandardMaterial color={container.color} />
-        </Box>
-      ))}
-      
-      {/* Crane */}
-      <group position={[0, 0, 4]}>
-        <Box args={[0.1, 3, 0.1]} position={[0, 1.5, 0]}>
-          <meshStandardMaterial color="#FF6B35" />
-        </Box>
-        <Box args={[4, 0.1, 0.1]} position={[0, 3, 0]}>
-          <meshStandardMaterial color="#FF6B35" />
-        </Box>
-      </group>
-    </group>
-  );
-}
-
-function getContainerColor(): string {
-  const colors = ['#00D9FF', '#FF6B35', '#22c55e', '#eab308', '#a855f7'];
-  return colors[Math.floor(Math.random() * colors.length)];
-}
-
-// Labels using Text component
-function Labels() {
-  return (
-    <group>
-      <Text
-        position={[0, 3, 0]}
-        fontSize={0.3}
-        color="#00D9FF"
-        anchorX="center"
-        anchorY="middle"
-      >
-        Quantum Optimization Landscape
-      </Text>
-      <Text
-        position={[-4, 1, 0]}
-        fontSize={0.15}
-        color="#888888"
-        anchorX="center"
-      >
-        Berth Allocation →
-      </Text>
-      <Text
-        position={[0, 1, 4]}
-        fontSize={0.15}
-        color="#888888"
-        anchorX="center"
-        rotation={[0, -Math.PI / 2, 0]}
-      >
-        Time →
-      </Text>
-    </group>
-  );
-}
-
-// Scene content
-function SceneContent({ viewMode }: { viewMode: 'landscape' | 'yard' }) {
-  return (
-    <>
-      <color attach="background" args={['#0A1929']} />
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
-      <pointLight position={[-10, 10, -5]} intensity={0.5} color="#00D9FF" />
-      
-      {viewMode === 'landscape' ? (
-        <>
-          <EnergyLandscape />
-          <QuantumParticle />
-          <Labels />
-        </>
-      ) : (
-        <ContainerYard />
-      )}
-      
-      <OrbitControls 
-        enablePan={true} 
-        enableZoom={true} 
-        enableRotate={true}
-        minDistance={5}
-        maxDistance={20}
-      />
-      
-      <gridHelper args={[20, 20, '#1e3a5f', '#1e3a5f']} position={[0, -2.5, 0]} />
-    </>
-  );
-}
-
-// Error fallback UI
-function ErrorFallback({ error, onRetry }: { error?: string; onRetry: () => void }) {
-  return (
-    <div className="w-full h-full bg-navy-400 flex items-center justify-center">
-      <div className="text-center p-8">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
-          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-        </div>
-        <h3 className="text-lg font-semibold text-white mb-2">3D Visualization Error</h3>
-        <p className="text-gray-400 text-sm mb-4 max-w-xs mx-auto">
-          {error || 'Unable to render the 3D visualization. Your browser may not support WebGL.'}
-        </p>
-        <button
-          onClick={onRetry}
-          className="px-4 py-2 bg-accent-cyan text-navy rounded-lg hover:bg-accent-cyan/80 transition-colors"
-        >
-          Try Again
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export default function QuantumVisualization() {
-  const { isOptimizing, lastOptimization } = useQradhaStore();
-  const [viewMode, setViewMode] = useState<'landscape' | 'yard'>('landscape');
-  const [hasError, setHasError] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [key, setKey] = useState(0);
-
-  // Check WebGL support
-  useEffect(() => {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      if (!gl) {
-        setHasError(true);
+  // Network topology visualization
+  const drawNetworkTopology = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, time: number) => {
+    ctx.clearRect(0, 0, width, height);
+    
+    // Background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0, '#0a0f1a');
+    bgGrad.addColorStop(1, '#0d1424');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+    
+    const vessels = portState?.vessels || [];
+    const berths = portState?.berths || [];
+    const trains = portState?.trains || [];
+    
+    // Create nodes
+    const nodes: { x: number; y: number; label: string; type: string; color: string }[] = [];
+    
+    // Central port node
+    nodes.push({ x: width/2, y: height/2, label: 'Hamburg Port', type: 'port', color: '#00D9FF' });
+    
+    // Berth nodes (inner ring)
+    berths.slice(0, 6).forEach((berth, i) => {
+      const angle = (i / 6) * Math.PI * 2 - Math.PI/2;
+      const radius = 100;
+      nodes.push({
+        x: width/2 + Math.cos(angle) * radius,
+        y: height/2 + Math.sin(angle) * radius,
+        label: berth.name.replace(' - CTB', '').replace(' - CTA', ''),
+        type: 'berth',
+        color: berth.status === 'occupied' ? '#FF6B6B' : '#00FF88',
+      });
+    });
+    
+    // Vessel nodes (outer ring)
+    vessels.slice(0, 6).forEach((vessel, i) => {
+      const angle = (i / 6) * Math.PI * 2 - Math.PI/2 + Math.PI/6;
+      const radius = 180;
+      nodes.push({
+        x: width/2 + Math.cos(angle) * radius,
+        y: height/2 + Math.sin(angle) * radius,
+        label: vessel.name.split(' ')[0],
+        type: 'vessel',
+        color: vessel.status === 'berthed' ? '#00FF88' : vessel.status === 'approaching' ? '#00D9FF' : '#FF9F43',
+      });
+    });
+    
+    // Train nodes (bottom)
+    trains.forEach((train, i) => {
+      nodes.push({
+        x: 80 + i * 120,
+        y: height - 60,
+        label: train.name.split(' ')[0],
+        type: 'train',
+        color: '#9333EA',
+      });
+    });
+    
+    // Draw connections
+    ctx.lineWidth = 1;
+    nodes.forEach((node, i) => {
+      if (node.type === 'berth') {
+        // Connect berths to port
+        ctx.strokeStyle = 'rgba(0, 217, 255, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(nodes[0].x, nodes[0].y);
+        ctx.lineTo(node.x, node.y);
+        ctx.stroke();
       }
-    } catch (e) {
-      setHasError(true);
+      if (node.type === 'vessel') {
+        // Connect vessels to nearest berth
+        const nearestBerth = nodes.find(n => n.type === 'berth');
+        if (nearestBerth) {
+          const gradient = ctx.createLinearGradient(node.x, node.y, nearestBerth.x, nearestBerth.y);
+          gradient.addColorStop(0, node.color);
+          gradient.addColorStop(1, 'transparent');
+          ctx.strokeStyle = gradient;
+          ctx.beginPath();
+          ctx.setLineDash([5, 5]);
+          ctx.moveTo(node.x, node.y);
+          ctx.lineTo(nearestBerth.x, nearestBerth.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      if (node.type === 'train') {
+        // Connect trains to port
+        ctx.strokeStyle = 'rgba(147, 51, 234, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(nodes[0].x, nodes[0].y);
+        ctx.lineTo(node.x, node.y);
+        ctx.stroke();
+      }
+    });
+    
+    // Draw nodes
+    nodes.forEach((node, i) => {
+      // Pulse effect
+      const pulse = Math.sin(time * 2 + i) * 3;
+      const radius = node.type === 'port' ? 30 : node.type === 'berth' ? 20 : 15;
+      
+      // Glow
+      const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius * 2);
+      glow.addColorStop(0, node.color + '40');
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius * 2 + pulse, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Node
+      ctx.fillStyle = node.color;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius + pulse/2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Border
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Label
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(node.label, node.x, node.y + radius + 18);
+    });
+    
+    // Title
+    ctx.fillStyle = '#00D9FF';
+    ctx.font = 'bold 16px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Port Network Topology', 20, 30);
+    
+    // Legend
+    ctx.font = '11px Inter, sans-serif';
+    const legendY = 50;
+    const legendItems = [
+      { color: '#00D9FF', label: 'Port Hub' },
+      { color: '#00FF88', label: 'Available' },
+      { color: '#FF6B6B', label: 'Occupied' },
+      { color: '#9333EA', label: 'Rail' },
+    ];
+    legendItems.forEach((item, i) => {
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.arc(30 + i * 80, legendY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.label, 40 + i * 80, legendY + 4);
+    });
+  }, [portState]);
+
+  // Animation loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setError('Canvas 2D context not available');
+      return;
     }
+
+    setIsLoading(false);
+
+    let startTime = Date.now();
+    
+    const animate = () => {
+      const time = (Date.now() - startTime) / 1000;
+      const { width, height } = canvas;
+      
+      switch (view) {
+        case 'energy':
+          drawEnergyLandscape(ctx, width, height, time);
+          break;
+        case 'containers':
+          drawContainerYard(ctx, width, height, time);
+          break;
+        case 'network':
+          drawNetworkTopology(ctx, width, height, time);
+          break;
+      }
+      
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [view, drawEnergyLandscape, drawContainerYard, drawNetworkTopology]);
+
+  // Handle resize
+  useEffect(() => {
+    const handleResize = () => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const container = canvas.parentElement;
+        if (container) {
+          canvas.width = container.clientWidth;
+          canvas.height = container.clientHeight;
+        }
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleRetry = () => {
-    setHasError(false);
-    setKey(prev => prev + 1);
-  };
-
-  if (hasError) {
-    return <ErrorFallback onRetry={handleRetry} />;
+  if (error) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-navy-400 rounded-xl">
+        <div className="text-center p-8">
+          <AlertTriangle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold mb-2">Visualization Error</h3>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-accent-cyan text-navy rounded-lg hover:bg-accent-cyan/80"
+          >
+            <RotateCcw className="w-4 h-4 inline mr-2" />
+            Reload
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="relative w-full h-full">
-      <ThreeErrorBoundary fallback={<ErrorFallback onRetry={handleRetry} />}>
-        <Canvas 
-          key={key}
-          camera={{ position: [8, 6, 8], fov: 50 }}
-          onCreated={() => setIsLoaded(true)}
-          gl={{ 
-            antialias: true,
-            alpha: false,
-            powerPreference: 'high-performance',
-            failIfMajorPerformanceCaveat: false
-          }}
-        >
-          <SceneContent viewMode={viewMode} />
-        </Canvas>
-      </ThreeErrorBoundary>
-      
-      {/* Loading overlay */}
-      {!isLoaded && !hasError && (
-        <div className="absolute inset-0 bg-navy-400 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-gray-400">Loading 3D visualization...</p>
-          </div>
-        </div>
-      )}
-      
-      {/* Controls overlay */}
-      <div className="absolute top-4 left-4 flex gap-2">
+      {/* View selector */}
+      <div className="absolute top-4 right-4 z-10 flex gap-2">
         <button
-          onClick={() => setViewMode('landscape')}
-          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-            viewMode === 'landscape' 
-              ? 'bg-accent-cyan text-navy shadow-lg shadow-accent-cyan/30' 
-              : 'bg-navy-300/80 hover:bg-navy-200 backdrop-blur-sm'
+          onClick={() => setView('energy')}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+            view === 'energy' ? 'bg-accent-cyan text-navy' : 'bg-navy-400/80 hover:bg-navy-300'
           }`}
         >
-          ⚡ Energy Landscape
+          <Zap className="w-4 h-4" />
+          Energy
         </button>
         <button
-          onClick={() => setViewMode('yard')}
-          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-            viewMode === 'yard' 
-              ? 'bg-accent-cyan text-navy shadow-lg shadow-accent-cyan/30' 
-              : 'bg-navy-300/80 hover:bg-navy-200 backdrop-blur-sm'
+          onClick={() => setView('containers')}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+            view === 'containers' ? 'bg-accent-cyan text-navy' : 'bg-navy-400/80 hover:bg-navy-300'
           }`}
         >
-          📦 Container Yard
+          <Box className="w-4 h-4" />
+          Containers
+        </button>
+        <button
+          onClick={() => setView('network')}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+            view === 'network' ? 'bg-accent-cyan text-navy' : 'bg-navy-400/80 hover:bg-navy-300'
+          }`}
+        >
+          <Cpu className="w-4 h-4" />
+          Network
         </button>
       </div>
-      
-      {/* Help tooltip */}
-      <div className="absolute top-4 right-4 glass rounded-lg px-3 py-2 text-xs text-gray-400">
-        <div className="flex items-center gap-2">
-          <span>🖱️ Drag to rotate</span>
-          <span>•</span>
-          <span>Scroll to zoom</span>
-        </div>
-      </div>
-      
-      {/* Status indicator */}
-      {isOptimizing && (
-        <div className="absolute bottom-4 left-4 glass rounded-lg px-4 py-3 flex items-center gap-3">
-          <div className="relative">
-            <div className="w-3 h-3 rounded-full bg-accent-orange animate-ping absolute" />
-            <div className="w-3 h-3 rounded-full bg-accent-orange" />
-          </div>
-          <span className="text-sm font-medium">Quantum tunneling in progress...</span>
-        </div>
-      )}
-      
-      {lastOptimization && !isOptimizing && (
-        <div className="absolute bottom-4 left-4 glass rounded-lg px-4 py-3 flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-green-500" />
-          <span className="text-sm">
-            ✓ Optimal solution found: <span className="font-semibold text-green-400">{lastOptimization.improvement_percent.toFixed(1)}% improvement</span>
-          </span>
-        </div>
-      )}
+
+      {/* Loading state */}
+      <AnimatePresence>
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex items-center justify-center bg-navy-400 z-20"
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-gray-400">Loading visualization...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Canvas */}
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full rounded-xl"
+        style={{ background: 'linear-gradient(180deg, #0a0f1a 0%, #0d1424 100%)' }}
+      />
     </div>
   );
 }

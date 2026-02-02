@@ -186,5 +186,6 @@ export interface ChatMessage {
     disruption?: Disruption;
     optimization?: OptimizationResult;
     scenario?: Scenario;
+    report?: string;
   };
 }

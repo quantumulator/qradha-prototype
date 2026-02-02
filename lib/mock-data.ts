@@ -173,7 +173,7 @@ export const mockCranes: Crane[] = [
   { id: 'QC12', type: 'STS', status: 'active', berth_id: 'berth_6', moves_per_hour: 34, energy_consumption_kwh: 115, position: { lat: 53.5353, lon: 9.9343 } },
 ];
 
-// Mock Trains
+// Mock Trains - Positioned on rail tracks (land-based coordinates near terminals)
 export const mockTrains: Train[] = [
   {
     id: 'train_1',
@@ -184,7 +184,7 @@ export const mockTrains: Train[] = [
     containers_teu: 82,
     destination: 'Munich Rail Terminal',
     track: 'Track 3',
-    position: { lat: 53.5320, lon: 9.9420 },
+    position: { lat: 53.5285, lon: 9.9680 },  // Rail yard east of Burchardkai
   },
   {
     id: 'train_2',
@@ -195,7 +195,7 @@ export const mockTrains: Train[] = [
     containers_teu: 96,
     destination: 'Prague Terminal',
     track: 'Track 5',
-    position: { lat: 53.5310, lon: 9.9450 },
+    position: { lat: 53.5265, lon: 9.9720 },  // Rail yard
   },
   {
     id: 'train_3',
@@ -207,7 +207,7 @@ export const mockTrains: Train[] = [
     containers_teu: 74,
     destination: 'Vienna South',
     track: 'Track 1',
-    position: { lat: 53.5280, lon: 9.9380 },
+    position: { lat: 53.5245, lon: 9.9760 },  // Rail approach
   },
   {
     id: 'train_4',
@@ -218,7 +218,7 @@ export const mockTrains: Train[] = [
     containers_teu: 68,
     destination: 'Basel Intermodal',
     track: 'Track 2',
-    position: { lat: 53.5330, lon: 9.9400 },
+    position: { lat: 53.5295, lon: 9.9650 },  // Rail departure
   },
 ];
 

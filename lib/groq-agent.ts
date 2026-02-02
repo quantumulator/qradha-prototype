@@ -182,13 +182,12 @@ class GroqAgent {
       case 'disruption_parser':
       case 'optimization_insight':
       case 'report_synthesis':
-        return 'llama-3.1-70b-versatile';
       case 'scenario_generator':
-        return 'mixtral-8x7b-32768';
+        return 'llama-3.3-70b-versatile';
       case 'predictive_resilience':
         return 'llama-3.1-8b-instant';
       default:
-        return 'llama-3.1-70b-versatile';
+        return 'llama-3.3-70b-versatile';
     }
   }
 

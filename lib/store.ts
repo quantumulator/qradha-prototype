@@ -22,6 +22,8 @@ interface QradhaStore {
   setCurrentDisruption: (disruption: Disruption | null) => void;
   isOptimizing: boolean;
   setIsOptimizing: (optimizing: boolean) => void;
+  optimizationProgress: number;
+  setOptimizationProgress: (progress: number) => void;
   lastOptimization: OptimizationResult | null;
   setLastOptimization: (result: OptimizationResult | null) => void;
   
@@ -63,6 +65,8 @@ export const useQradhaStore = create<QradhaStore>((set, get) => ({
   setCurrentDisruption: (disruption) => set({ currentDisruption: disruption }),
   isOptimizing: false,
   setIsOptimizing: (optimizing) => set({ isOptimizing: optimizing }),
+  optimizationProgress: 0,
+  setOptimizationProgress: (progress) => set({ optimizationProgress: progress }),
   lastOptimization: null,
   setLastOptimization: (result) => set({ lastOptimization: result }),
   
@@ -136,11 +140,21 @@ export const useQradhaStore = create<QradhaStore>((set, get) => ({
   },
   
   runOptimization: async (disruption: Disruption): Promise<OptimizationResult> => {
-    set({ isOptimizing: true });
+    set({ isOptimizing: true, optimizationProgress: 0 });
     
-    // Simulate optimization time
+    // Simulate optimization progress
     const startTime = Date.now();
-    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
+    const totalDuration = 2000 + Math.random() * 1000;
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min((elapsed / totalDuration) * 100, 95);
+      set({ optimizationProgress: progress });
+    }, 100);
+    
+    await new Promise(resolve => setTimeout(resolve, totalDuration));
+    clearInterval(progressInterval);
+    set({ optimizationProgress: 100 });
+    
     const runtime = Date.now() - startTime;
     
     const costBefore = 15000 + Math.random() * 5000;

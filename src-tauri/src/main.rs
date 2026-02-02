@@ -38,14 +38,14 @@ struct GroqResponse {
     choices: Vec<GroqChoice>,
 }
 
-/// Get the Groq API key status (not the actual key for security)
+/// Get the AI API key status (not the actual key for security)
 #[tauri::command]
 fn get_groq_status() -> Result<bool, String> {
     let key = GROQ_API_KEY.as_str();
     Ok(!key.is_empty() && key.starts_with("gsk_"))
 }
 
-/// Call Groq API with the specified agent type
+/// Call AI API with the specified agent type
 #[tauri::command]
 async fn call_groq_agent(
     agent_type: String,
@@ -55,17 +55,17 @@ async fn call_groq_agent(
     let api_key = GROQ_API_KEY.as_str();
     
     if api_key.is_empty() {
-        return Err("GROQ_API_KEY not configured. Please set it in .env file.".to_string());
+        return Err("AI API key not configured. Please set it in .env file.".to_string());
     }
 
-    // Select model based on agent type
+    // Select model based on agent type - Updated to current Groq models (2026)
     let (model, temperature) = match agent_type.as_str() {
-        "disruption_parser" => ("llama-3.1-70b-versatile", 0.2),
-        "scenario_generator" => ("mixtral-8x7b-32768", 0.7),
-        "optimization_insight" => ("llama-3.1-70b-versatile", 0.3),
+        "disruption_parser" => ("llama-3.3-70b-versatile", 0.2),
+        "scenario_generator" => ("llama-3.3-70b-versatile", 0.7),
+        "optimization_insight" => ("llama-3.3-70b-versatile", 0.3),
         "predictive_resilience" => ("llama-3.1-8b-instant", 0.2),
-        "report_synthesis" => ("llama-3.1-70b-versatile", 0.4),
-        _ => ("llama-3.1-70b-versatile", 0.5),
+        "report_synthesis" => ("llama-3.3-70b-versatile", 0.4),
+        _ => ("llama-3.3-70b-versatile", 0.5),
     };
 
     // Build system prompt based on agent type
